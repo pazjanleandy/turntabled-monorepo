@@ -1,0 +1,320 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital,opsz,wght@0,12..72,400;1,12..72,400&family=Manrope:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg: #ebe6e6;
+    --accent: #f7793e;
+    --text: #0f172a;
+    --muted: #6b7280;
+    --border: rgba(0, 0, 0, 0.06);
+
+    /* Slightly translucent so background texture can peek through */
+    --card: rgba(247, 244, 244, 0.72);
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg);
+
+    /* More depth: add a faint diagonal sheen + keep your existing gradient stack */
+    background-image:
+      /* paper sheen / fiber lighting hint */
+      linear-gradient(115deg, rgba(15, 23, 42, 0.035), transparent 45%),
+
+      radial-gradient(1200px 800px at 12% -10%, rgba(247, 121, 62, 0.16), transparent 60%),
+      radial-gradient(900px 700px at 110% 10%, rgba(15, 23, 42, 0.07), transparent 55%),
+      radial-gradient(700px 500px at 20% 85%, rgba(255, 255, 255, 0.6), transparent 62%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0) 45%);
+
+    background-attachment: fixed;
+
+    color: var(--text);
+    font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+
+    position: relative;
+    z-index: 0;
+    isolation: isolate;
+
+    /* Safety: prevent accidental horizontal bleed */
+    overflow-x: hidden;
+  }
+
+  @keyframes ambient-drift {
+    0% {
+      transform: translate3d(-2%, -2%, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(2%, 1%, 0) scale(1.02);
+    }
+    100% {
+      transform: translate3d(-2%, -1%, 0) scale(1);
+    }
+  }
+
+  /* Paper grain layer (more natural than multiply) */
+ /* Subtle grid texture overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+
+  /* Put it above the background so it actually renders */
+  z-index: 0;
+
+  /* Two perpendicular repeating lines = grid */
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      rgba(15, 23, 42, 0.055) 0px,
+      rgba(15, 23, 42, 0.055) 2px,
+      transparent 1px,
+      transparent 84px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(15, 23, 42, 0.045) 0px,
+      rgba(15, 23, 42, 0.045) 2px,
+      transparent 1px,
+      transparent 84px
+    );
+
+  /* Blend it softly into your paper background */
+  opacity: 0.35;
+  mix-blend-mode: soft-light;
+
+  /* Optional: soften the lines so it feels like paper texture, not a UI grid */
+  filter: blur(0.2px);
+}
+
+
+  /* Ambient color blob + vignette for depth */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: -20%;
+    pointer-events: none;
+
+    background-image:
+      /* subtle vignette */
+      radial-gradient(ellipse at center, rgba(235, 230, 230, 0) 55%, rgba(15, 23, 42, 0.10) 100%),
+
+      conic-gradient(
+        from 90deg at 20% 20%,
+        rgba(247, 121, 62, 0.14),
+        transparent 25%,
+        rgba(15, 23, 42, 0.08),
+        transparent 55%,
+        rgba(247, 121, 62, 0.1)
+      ),
+      radial-gradient(500px 420px at 80% 20%, rgba(247, 121, 62, 0.12), transparent 70%);
+
+    filter: blur(70px);
+    opacity: 0.28;
+    mix-blend-mode: soft-light;
+    animation: ambient-drift 18s ease-in-out infinite;
+
+    z-index: -2;
+  }
+
+  img {
+    max-width: 100%;
+    display: block;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: #ef6b2f;
+  }
+
+  a:focus-visible {
+    outline: 3px solid rgba(247, 121, 62, 0.4);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+
+  button {
+    background-color: var(--accent);
+    color: #1f130c;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.65rem 1.2rem;
+    font-weight: 600;
+    font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+    box-shadow: 0 10px 20px -12px rgba(15, 15, 15, 0.4), 0 2px 4px rgba(15, 15, 15, 0.1);
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background-color: #ef6b2f;
+    transform: translateY(-1px);
+  }
+
+  button:active {
+    transform: translateY(0);
+  }
+
+  button:focus-visible {
+    outline: 3px solid rgba(247, 121, 62, 0.4);
+    outline-offset: 3px;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", serif;
+    font-weight: 500;
+    line-height: 1.1;
+    margin: 0 0 0.75rem;
+    color: var(--text);
+  }
+
+  p {
+    margin: 0 0 1rem;
+  }
+
+  code {
+    font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
+    background: rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.1rem 0.35rem;
+    color: #1f2937;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--card);
+    border-radius: 14px;
+    box-shadow: 0 16px 28px -20px rgba(15, 15, 15, 0.32), 0 4px 10px rgba(15, 15, 15, 0.08);
+    padding: 1.1rem;
+
+    /* lets background texture show through */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .btn-primary {
+    background-color: var(--accent);
+    color: #1f130c;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.65rem 1.2rem;
+    font-weight: 600;
+    box-shadow: 0 10px 20px -12px rgba(15, 15, 15, 0.4), 0 2px 4px rgba(15, 15, 15, 0.1);
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .btn-primary:hover {
+    background-color: #ef6b2f;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:focus-visible {
+    outline: 3px solid rgba(247, 121, 62, 0.4);
+    outline-offset: 3px;
+  }
+}
+
+@layer utilities {
+  .text-muted {
+    color: var(--muted);
+  }
+
+  .bg-card {
+    background-color: var(--card);
+  }
+
+  .border-subtle {
+    border-color: var(--border);
+  }
+
+  .scrollbar-sleek {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 23, 42, 0.35) transparent;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar {
+    height: 10px;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 999px;
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, rgba(247, 121, 62, 0.6), rgba(15, 23, 42, 0.4));
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+  }
+
+  .scrollbar-sleek::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, rgba(247, 121, 62, 0.8), rgba(15, 23, 42, 0.55));
+  }
+
+  .hero-fade {
+    -webkit-mask-image:
+      linear-gradient(to right, transparent, black 12%, black 88%, transparent),
+      linear-gradient(to bottom, transparent, black 18%, black 88%, transparent);
+    mask-image:
+      linear-gradient(to right, transparent, black 12%, black 88%, transparent),
+      linear-gradient(to bottom, transparent, black 18%, black 88%, transparent);
+    -webkit-mask-composite: intersect;
+    mask-composite: intersect;
+  }
+
+  .vinyl-texture {
+    background-image:
+      radial-gradient(circle at 18% 22%, rgba(247, 121, 62, 0.06), transparent 45%),
+      repeating-radial-gradient(
+        circle at center,
+        rgba(15, 23, 42, 0.045) 0 0.6px,
+        transparent 0.6px 6px
+      );
+    background-size: auto, 220px 220px;
+  }
+
+  .hero-bleed {
+    background:
+      linear-gradient(180deg, rgba(235, 230, 230, 0.65) 0%, rgba(235, 230, 230, 0) 35%),
+      linear-gradient(0deg, rgba(235, 230, 230, 0.75) 0%, rgba(235, 230, 230, 0) 55%),
+      radial-gradient(
+        circle at center,
+        rgba(235, 230, 230, 0) 40%,
+        rgba(235, 230, 230, 0.7) 100%
+      );
+    mix-blend-mode: normal;
+  }
+}
