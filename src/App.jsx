@@ -8,6 +8,7 @@ import Favorites from './pages/Favorites.jsx'
 import Activity from './pages/Activity.jsx'
 import Friends from './pages/Friends.jsx'
 import Artists from './pages/Artists.jsx'
+import LastFmCallbackPage from './pages/LastFmCallbackPage.jsx'
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/friends" element={<Friends />} />
+        <Route path="/auth/lastfm/callback" element={<LastFmCallbackPage />} />
         <Route path="/artist/:artistId" element={<ArtistProfile />} />
         <Route path="*" element={<Home />} />
       </Routes>
