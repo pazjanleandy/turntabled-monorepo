@@ -1,24 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 export default function useAlbumRatings(albums) {
-  const albumKeys = useMemo(
-    () => albums.map((album) => `${album.artist} - ${album.title}`),
+  const initialRatings = useMemo(
+    () =>
+      Object.fromEntries(
+        albums.map((album) => [
+          `${album.artist} - ${album.title}`,
+          album.rating ?? 0,
+        ])
+      ),
     [albums]
   );
 
-  const [ratings, setRatings] = useState(() =>
-    Object.fromEntries(albumKeys.map((key) => [key, 0]))
-  );
-
-  useEffect(() => {
-    setRatings((prev) => {
-      const next = {};
-      albumKeys.forEach((key) => {
-        next[key] = prev[key] ?? 0;
-      });
-      return next;
-    });
-  }, [albumKeys]);
+  const [ratings, setRatings] = useState(() => initialRatings);
 
   const updateRating = (key, value) => {
     setRatings((prev) => ({

@@ -24,6 +24,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `/favorites` Favorites
 - `/activity` Activity
 - `/friends` Friends
+- `/auth/lastfm/callback` Last.fm OAuth callback
 - `/artist/:artistId` Artist profile (loaded from JSON in `src/data/artists`)
 
 **Data**
@@ -71,6 +72,14 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 **Hooks**
 - `src/hooks/useAlbumCovers.js` fetches album art from iTunes (added Feb 11, 2026)
 - `src/hooks/useAlbumRatings.js` rating state helper (added Feb 11, 2026)
+
+**Last.fm Callback**
+- Production callback URL: `https://turntabled-monorepo.vercel.app/auth/lastfm/callback`
+- Local callback URL: `http://localhost:5173/auth/lastfm/callback`
+
+**Environment Variables**
+- Client: `VITE_LASTFM_API_KEY`
+- Server: `LASTFM_API_KEY`, `LASTFM_SHARED_SECRET`
 
 **Styling**
 - `src/index.css` contains global theme variables, background texture, scrollbar styles, and utility layers.
