@@ -15,7 +15,7 @@ export default function CreateAccountModal({ isOpen, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8"
       role="dialog"
       aria-modal="true"
       onClick={onClose}

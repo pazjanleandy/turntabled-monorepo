@@ -1,11 +1,43 @@
-import { Link } from 'react-router-dom'
-import { X } from 'phosphor-react'
+import { useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { X } from "phosphor-react";
 
 export default function SignInModal({ isOpen, onClose, anchorTop }) {
-  if (!isOpen) return null
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+
+    // Close when clicking anywhere OUTSIDE the modal content,
+    // even if something else is layered above it (capture phase).
+    const onPointerDownCapture = (e) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      // If the click/tap happened inside the modal, do nothing.
+      if (panel.contains(e.target)) return;
+
+      onClose?.();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDownCapture, true);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDownCapture, true);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
+      {/* Optional backdrop (still fine to keep) */}
       <button
         type="button"
         aria-label="Close sign in modal"
@@ -18,7 +50,10 @@ export default function SignInModal({ isOpen, onClose, anchorTop }) {
         style={{ top: anchorTop ?? 96 }}
       >
         <div className="mx-auto w-full max-w-4xl pointer-events-none">
-          <div className="relative pointer-events-auto rounded-none border border-black/5 bg-white/90 p-4 shadow-[0_18px_40px_-26px_rgba(15,15,15,0.45)] backdrop-blur-md vinyl-texture">
+          <div
+            ref={panelRef}
+            className="relative pointer-events-auto rounded-none border border-black/5 bg-white/90 p-4 shadow-[0_18px_40px_-26px_rgba(15,15,15,0.45)] backdrop-blur-md vinyl-texture"
+          >
             <button
               type="button"
               className="absolute right-3 top-3 rounded-full border border-black/10 p-1 text-muted transition hover:text-text"
@@ -50,6 +85,7 @@ export default function SignInModal({ isOpen, onClose, anchorTop }) {
               <button
                 type="button"
                 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent transition hover:text-[#ef6b2f]"
+                onClick={onClose}
               >
                 Forgotten?
               </button>
@@ -61,6 +97,7 @@ export default function SignInModal({ isOpen, onClose, anchorTop }) {
 
               <Link
                 to="/home"
+                onClick={() => onClose?.()}
                 className="btn-primary inline-flex items-center px-4 py-2 text-xs"
               >
                 Sign in
@@ -70,5 +107,5 @@ export default function SignInModal({ isOpen, onClose, anchorTop }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
