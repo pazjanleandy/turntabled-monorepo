@@ -12,7 +12,7 @@ export default function Landing() {
       <section className="relative w-full px-0">
         <Hero
           showActions={false}
-          className="h-[70vh] min-h-[720px]"
+          className="h-[70vh] min-h-180"
           actions={
             <button
               type="button"

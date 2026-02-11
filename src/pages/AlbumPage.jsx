@@ -1,16 +1,14 @@
 import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
 import { CalendarPlus, NotePencil, Star } from "phosphor-react";
 import Navbar from "../components/Navbar.jsx";
 import NavbarGuest from "../components/NavbarGuest.jsx";
 import BackButton from "../components/BackButton.jsx";
 import CoverImage from "../components/CoverImage.jsx";
 import StarRating from "../components/StarRating.jsx";
-import LogDatesModal from "../components/album/LogDatesModal.jsx";
 import useAuthStatus from "../hooks/useAuthStatus.js";
 import { albumCatalog } from "../data/albumData.js";
 
-function LogCard({ onLogDates }) {
+function LogCard() {
   return (
     <div className="rounded-2xl border border-black/5 bg-white/80 p-4 shadow-[0_18px_36px_-26px_rgba(15,15,15,0.35)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -35,7 +33,6 @@ function LogCard({ onLogDates }) {
           <button
             type="button"
             className="inline-flex items-center gap-2 rounded-full border border-black/5 bg-white/90 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
-            onClick={onLogDates}
           >
             <CalendarPlus size={14} weight="bold" />
             Log your dates
@@ -54,7 +51,6 @@ export default function AlbumPage() {
   const { releaseId } = useParams();
   const { isSignedIn } = useAuthStatus();
   const album = albumCatalog[releaseId];
-  const [isLogDatesOpen, setIsLogDatesOpen] = useState(false);
 
   if (!album) {
     return (
@@ -100,12 +96,12 @@ export default function AlbumPage() {
               <CoverImage
                 src={album.cover}
                 alt={`${album.title} cover`}
-                className="aspect-square w-full max-w-[220px] rounded-2xl object-cover shadow-[0_14px_28px_-22px_rgba(15,15,15,0.35)]"
+                className="aspect-square w-full max-w-55 rounded-2xl object-cover shadow-[0_14px_28px_-22px_rgba(15,15,15,0.35)]"
               />
 
               {/* On small screens, show the log card under the cover */}
               <div className="mt-4 lg:hidden">
-                <LogCard onLogDates={() => setIsLogDatesOpen(true)} />
+                <LogCard />
               </div>
             </div>
 
@@ -155,7 +151,7 @@ export default function AlbumPage() {
 
             {/* Right sidebar actions (desktop) */}
             <aside className="hidden min-w-0 lg:block">
-              <LogCard onLogDates={() => setIsLogDatesOpen(true)} />
+              <LogCard />
             </aside>
           </div>
         </section>
@@ -196,12 +192,6 @@ export default function AlbumPage() {
           </ul>
         </section>
       </div>
-
-      <LogDatesModal
-        isOpen={isLogDatesOpen}
-        onClose={() => setIsLogDatesOpen(false)}
-        albumTitle={album?.title}
-      />
     </div>
   );
 }

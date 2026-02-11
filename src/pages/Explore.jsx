@@ -1,8 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
-import NavbarGuest from '../components/NavbarGuest.jsx'
-import BackButton from '../components/BackButton.jsx'
-import useAuthStatus from '../hooks/useAuthStatus.js'
 
 const FILTER_OPTIONS = [
   { value: 'a-z', label: 'Alphabetical A-Z' },
@@ -14,7 +11,6 @@ const FILTER_OPTIONS = [
 ]
 
 export default function Explore() {
-  const { isSignedIn } = useAuthStatus()
   const [searchParams, setSearchParams] = useSearchParams()
   const fallbackFilter = FILTER_OPTIONS[0]?.value ?? 'a-z'
   const activeFilter = searchParams.get('filter') ?? fallbackFilter
@@ -29,12 +25,7 @@ export default function Explore() {
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-        {isSignedIn ? (
-          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
-        ) : (
-          <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
-        )}
-        <BackButton className="self-start" />
+        <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <label className="flex-1 text-sm font-semibold text-text">
@@ -50,7 +41,7 @@ export default function Explore() {
             <select
               value={activeFilter}
               onChange={handleFilterChange}
-              className="w-full min-w-[220px] rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20 md:w-auto"
+              className="w-full min-w-55 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20 md:w-auto"
             >
               {FILTER_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>

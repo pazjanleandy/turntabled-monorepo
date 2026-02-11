@@ -1,33 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+﻿import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Compass, House, MusicNotes, SignIn } from 'phosphor-react'
 import SignInModal from './auth/SignInModal.jsx'
-import useAuthStatus from '../hooks/useAuthStatus.js'
 
 export default function NavbarGuest({ className = '' }) {
   const [isSignInOpen, setIsSignInOpen] = useState(false)
-  const [modalTop, setModalTop] = useState(null)
-  const navRef = useRef(null)
-  const { signIn } = useAuthStatus()
-
-  useLayoutEffect(() => {
-    if (!isSignInOpen) return undefined
-
-    const updatePosition = () => {
-      if (!navRef.current) return
-      const rect = navRef.current.getBoundingClientRect()
-      setModalTop(Math.round(rect.bottom))
-    }
-
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [isSignInOpen])
 
   const navItemClass = ({ isActive }) =>
     [
@@ -38,7 +15,6 @@ export default function NavbarGuest({ className = '' }) {
   return (
     <>
       <nav
-        ref={navRef}
         className={`relative z-40 flex flex-wrap items-center justify-between gap-4 rounded-full bg-white/80 px-5 py-3 text-sm text-slate-900 shadow-lg backdrop-blur-lg min-w-0 ${className}`}
       >
         <div className="flex min-w-0 items-center gap-3">
@@ -74,15 +50,7 @@ export default function NavbarGuest({ className = '' }) {
         </button>
       </nav>
 
-      <SignInModal
-        isOpen={isSignInOpen}
-        onClose={() => setIsSignInOpen(false)}
-        onSignIn={() => {
-          signIn()
-          setIsSignInOpen(false)
-        }}
-        anchorTop={modalTop}
-      />
+      <SignInModal isOpen={isSignInOpen} onClose={() => setIsSignInOpen(false) } />
     </>
   )
 }

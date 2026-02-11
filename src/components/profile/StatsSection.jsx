@@ -10,24 +10,28 @@ export default function StatsSection() {
           label="Albums logged"
           value="214"
           hint="Last 30 days: 18"
+          to="/logs"
         />
         <Stat
           icon={<Star className="h-5 w-5" />}
           label="Avg rating"
           value="3.9"
           hint="Most common: 4.0"
+          to="/logs?filter=rating-desc"
         />
         <Stat
           icon={<Calendar className="h-5 w-5" />}
           label="This year"
           value="46"
           hint="Goal: 120 albums"
+          to="/logs"
         />
         <Stat
           icon={<ListBullets className="h-5 w-5" />}
           label="Backlog"
           value="83"
           hint="Up next: 12 saved"
+          to="/logs?filter=plan"
         />
       </div>
     </section>

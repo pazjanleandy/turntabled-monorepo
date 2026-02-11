@@ -54,7 +54,7 @@ export default function Hero({
           <div className="hero-bleed pointer-events-none absolute inset-0" />
 
           {/* smooth fade to page background at bottom */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-[var(--bg)]" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-linear-to-b from-transparent to-(--bg)" />
         </div>
 
         {/* Content */}

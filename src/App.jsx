@@ -11,6 +11,7 @@ import Friends from './pages/Friends.jsx'
 import Artists from './pages/Artists.jsx'
 import LastFmCallbackPage from './pages/LastFmCallbackPage.jsx'
 import AlbumPage from './pages/AlbumPage.jsx'
+import LoggedAlbums from './pages/LoggedAlbums.jsx'
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/friends" element={<Friends />} />
+        <Route path="/logs" element={<LoggedAlbums />} />
         <Route path="/album/:releaseId" element={<AlbumPage />} />
         <Route path="/auth/lastfm/callback" element={<LastFmCallbackPage />} />
         <Route path="/artist/:artistId" element={<ArtistProfile />} />

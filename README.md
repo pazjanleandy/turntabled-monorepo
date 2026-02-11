@@ -25,6 +25,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `/favorites` Favorites
 - `/activity` Activity
 - `/friends` Friends
+- `/logs` Logged albums
 - `/album/:releaseId` Album detail page
 - `/auth/lastfm/callback` Last.fm OAuth callback
 - `/artist/:artistId` Artist profile (loaded from JSON in `src/data/artists`)
@@ -34,6 +35,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/data/loadArtists.js` uses `import.meta.glob` to load all artist JSON files (eager) and attach `id` from filename
 - `src/data/profileData.js` mock profile data and lists (added Feb 11, 2026)
 - `src/data/albumData.js` static album release + tracklist data (added Feb 11, 2026)
+- `src/data/loggedAlbums.js` logged albums list for library page (added Feb 11, 2026)
 
 **Pages**
 - `src/pages/Landing.jsx` guest landing page (added Feb 11, 2026)
@@ -41,6 +43,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/pages/Profile.jsx` profile and activity views
 - `src/pages/LastFmCallbackPage.jsx` Last.fm OAuth callback handler (added Feb 11, 2026)
 - `src/pages/AlbumPage.jsx` album detail + tracklist view (added Feb 11, 2026)
+- `src/pages/LoggedAlbums.jsx` logged albums library + filters (added Feb 11, 2026)
 - `src/pages/ArtistProfile.jsx` artist profile detail view
 - `src/pages/Explore.jsx` explore filters/search placeholder (added Feb 11, 2026)
 - `src/pages/Backlog.jsx` backlog placeholder (added Feb 11, 2026)
@@ -73,6 +76,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/components/profile/FriendsSection.jsx` friends list card (added Feb 11, 2026)
 - `src/components/profile/ReviewsSection.jsx` reviews tab section (added Feb 11, 2026)
 - `src/components/profile/ReviewRow.jsx` review row layout (added Feb 11, 2026)
+- `src/components/profile/Stat.jsx` now supports clickable stats (added Feb 11, 2026)
 - `src/components/profile/ProfileCTA.jsx` profile CTA block (added Feb 11, 2026)
 - `src/components/profile/EditProfileModal.jsx` edit profile modal (added Feb 11, 2026)
 - `src/components/profile/ReplaceFavoriteModal.jsx` replace favorite modal (added Feb 11, 2026)
