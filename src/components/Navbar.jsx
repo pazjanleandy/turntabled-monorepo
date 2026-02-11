@@ -10,7 +10,7 @@ export default function Navbar({ className = '' }) {
 
   return (
     <nav
-      className={`relative z-[1000] flex flex-wrap items-center justify-between gap-4 rounded-full bg-white/80 px-5 py-3 text-sm text-slate-900 shadow-lg backdrop-blur-lg ${className}`}
+      className={`relative z-40 flex flex-wrap items-center justify-between gap-4 rounded-full bg-white/80 px-5 py-3 text-sm text-slate-900 shadow-lg backdrop-blur-lg ${className}`}
     >
       <div className="flex items-center gap-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15 text-base font-semibold text-accent transition duration-200 hover:-translate-y-0.5 hover:bg-accent/25">
@@ -57,7 +57,7 @@ export default function Navbar({ className = '' }) {
           user1
         </NavLink>
 
-        <div className="pointer-events-none absolute right-0 top-full z-[999] w-48 translate-y-1 pt-2 opacity-0 transition duration-200 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="pointer-events-none absolute right-0 top-full z-40 w-48 translate-y-1 pt-2 opacity-0 transition duration-200 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
           <div className="rounded-2xl border border-black/5 bg-white/95 p-2 text-xs font-semibold text-slate-900 shadow-lg">
             <NavLink
               to="/profile"
