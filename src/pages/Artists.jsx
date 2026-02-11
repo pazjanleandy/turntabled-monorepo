@@ -1,41 +1,15 @@
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
-import BackButton from '../components/BackButton.jsx'
-import useAuthStatus from '../hooks/useAuthStatus.js'
-
-const artists = [
-  {
-    name: 'chouchou merged syrups.',
-    id: 'chouchou',
-    initials: 'CS',
-    note: 'Dream pop / shoegaze',
-  },
-  {
-    name: 'Starsailor',
-    id: 'starsailor',
-    initials: 'SS',
-    note: 'Alt rock / indie',
-  },
-  {
-    name: 'The Strokes',
-    id: 'strokes',
-    initials: 'TS',
-    note: 'Indie rock / garage',
-  },
-]
+import { loadArtists } from '../data/loadArtists.js'
 
 export default function Artists() {
-  const { isSignedIn } = useAuthStatus()
+  const artists = useMemo(() => loadArtists(), [])
+
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-        {isSignedIn ? (
-          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
-        ) : (
-          <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
-        )}
-        <BackButton className="self-start" />
+        <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
 
         <section className="card vinyl-texture">
           <div className="flex flex-col gap-3">
@@ -58,13 +32,21 @@ export default function Artists() {
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full border border-black/5 bg-accent/15 text-sm font-semibold text-accent">
-                  {artist.initials}
+                  {artist.name
+                    .split(' ')
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((word) => word[0])
+                    .join('')
+                    .toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <p className="mb-1 truncate text-sm font-semibold text-text">
                     {artist.name}
                   </p>
-                  <p className="mb-0 text-xs text-muted">{artist.note}</p>
+                  <p className="mb-0 text-xs text-muted">
+                    {[...(artist.genres ?? [])].slice(0, 2).join(' / ') || artist.origin}
+                  </p>
                 </div>
               </div>
             </Link>
