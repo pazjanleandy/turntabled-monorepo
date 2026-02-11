@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Eye, Heart, Star, TrendUp, MagnifyingGlass } from 'phosphor-react'
 import CoverImage from './CoverImage.jsx'
 
@@ -97,7 +98,12 @@ export default function PopularAlbumsSection({ albums, search, onSearchChange })
               className="w-28 bg-transparent text-xs text-text placeholder:text-muted focus:outline-none"
             />
           </div>
-          <span className="text-xs font-semibold uppercase tracking-[0.25em] text-text">More</span>
+          <Link
+            to="/explore?filter=popular-week"
+            className="text-xs font-semibold uppercase tracking-[0.25em] text-text transition hover:text-accent"
+          >
+            More
+          </Link>
         </div>
       </div>
 
