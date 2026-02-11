@@ -15,7 +15,7 @@ export default function ProfileCTA() {
         >
           Open backlog
         </Link>
-        <Link to="/" className="btn-primary px-4 py-2 text-sm">
+        <Link to="/home" className="btn-primary px-4 py-2 text-sm">
           Log an album
         </Link>
       </div>

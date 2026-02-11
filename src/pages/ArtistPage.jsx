@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import Navbar from '../components/Navbar.jsx'
+import NavbarGuest from '../components/NavbarGuest.jsx'
 import { loadArtists } from '../data/loadArtists.js'
 
 export default function ArtistPage() {
@@ -12,13 +12,13 @@ export default function ArtistPage() {
     return (
       <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
-          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+          <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
           <section className="card vinyl-texture">
             <h1 className="mb-2 text-2xl">Artist not found</h1>
             <p className="mb-4 text-sm text-muted">
               We could not find that artist. Try one of the featured artists instead.
             </p>
-            <Link className="btn-primary inline-flex px-4 py-2 text-sm" to="/">
+            <Link className="btn-primary inline-flex px-4 py-2 text-sm" to="/home">
               Back to home
             </Link>
           </section>
@@ -30,7 +30,7 @@ export default function ArtistPage() {
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
-        <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+        <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
 
         <section className="card vinyl-texture">
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
@@ -71,4 +71,3 @@ export default function ArtistPage() {
     </div>
   )
 }
-

@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import Navbar from '../components/Navbar.jsx'
+import NavbarGuest from '../components/NavbarGuest.jsx'
 
 const FILTER_OPTIONS = [
   { value: 'a-z', label: 'Alphabetical A-Z' },
@@ -25,7 +25,7 @@ export default function Explore() {
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-        <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+        <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <label className="flex-1 text-sm font-semibold text-text">

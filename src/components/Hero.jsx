@@ -1,61 +1,80 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from "react";
 
-const heroImages = ['/hero/hero1.jpg', '/hero/hero2.jpg', '/hero/hero3.jpg']
+const heroImages = ["/hero/hero1.jpg", "/hero/hero2.jpg", "/hero/hero3.jpg"];
 
-export default function Hero() {
-  const [activeIndex, setActiveIndex] = useState(
-    () => Math.floor(Math.random() * heroImages.length),
-  )
-  const [isLoggingOpen, setIsLoggingOpen] = useState(false)
+export default function Hero({
+  showActions = true,
+  className = "",
+  actions = null,
+}) {
+  const [activeIndex, setActiveIndex] = useState(() =>
+    Math.floor(Math.random() * heroImages.length)
+  );
+  const [isLoggingOpen, setIsLoggingOpen] = useState(false);
 
-  const orderedImages = useMemo(() => heroImages, [])
+  const orderedImages = useMemo(() => heroImages, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % orderedImages.length)
-    }, 5200)
-    return () => clearInterval(interval)
-  }, [orderedImages.length])
+      setActiveIndex((prev) => (prev + 1) % orderedImages.length);
+    }, 5200);
+    return () => clearInterval(interval);
+  }, [orderedImages.length]);
 
   useEffect(() => {
-    if (!isLoggingOpen) return
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (!isLoggingOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = originalOverflow
-    }
-  }, [isLoggingOpen])
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isLoggingOpen]);
 
   return (
     <>
-      <header className="space-y-6">
-        <div className="relative">
-          <div className="hero-fade pointer-events-none absolute inset-0 z-5 bg-black/45"></div>
-          <div className="hero-bleed pointer-events-none absolute inset-0 z-10"></div>
-          <div className="hero-fade relative h-[300px] md:h-[400px]">
-            {orderedImages.map((src, index) => (
-              <img
-                key={src}
-                src={src}
-                alt="Turntabled hero"
-                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
-                  index === activeIndex ? 'opacity-100' : 'opacity-0'
-                }`}
-                loading={index === activeIndex ? 'eager' : 'lazy'}
-              />
-            ))}
-          </div>
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-end px-6 pb-10 text-center text-white md:pb-14">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.35em] text-white/80">
-              Track your music journey
-            </p>
-            <h1 className="mb-3 max-w-3xl text-3xl text-white md:text-5xl">
-              Log albums, share moments, build a backlog.
-            </h1>
-            <p className="mx-auto mb-5 max-w-2xl text-sm text-white/80 md:text-base">
-              Keep a personal record of every album you spin, surface favorites, and
-              follow what your friends are listening to.
-            </p>
+      <header className={`relative ${className}`}>
+        {/* Background stack */}
+        <div className="absolute inset-0 overflow-hidden">
+          {orderedImages.map((src, index) => (
+            <img
+              key={src}
+              src={src}
+              alt="Turntabled hero"
+              className={`absolute inset-0 h-full w-full object-cover object-[center_78%] transition-opacity duration-1000 ${
+                index === activeIndex ? "opacity-100" : "opacity-0"
+              }`}
+              loading={index === activeIndex ? "eager" : "lazy"}
+            />
+          ))}
+
+          {/* darken for text */}
+          <div className="absolute inset-0 bg-black/45" />
+
+          {/* your existing “bleed” layer if you’re using it in CSS */}
+          <div className="hero-bleed pointer-events-none absolute inset-0" />
+
+          {/* smooth fade to page background at bottom */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-[var(--bg)]" />
+        </div>
+
+        {/* Content */}
+        <div className="relative z-10 flex h-full flex-col items-center justify-end px-6 pb-12 text-center text-white md:pb-16">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.35em] text-white/80">
+            Track your music journey
+          </p>
+
+          <h1 className="mb-3 max-w-3xl text-3xl text-white md:text-5xl">
+            Log albums, share moments, build a backlog.
+          </h1>
+
+          <p className="mx-auto mb-5 max-w-2xl text-sm text-white/80 md:text-base">
+            Keep a personal record of every album you spin, surface favorites, and
+            follow what your friends are listening to.
+          </p>
+
+          {actions ? (
+            <div className="flex flex-wrap justify-center gap-2">{actions}</div>
+          ) : showActions ? (
             <div className="flex flex-wrap justify-center gap-2">
               <button className="btn-primary" onClick={() => setIsLoggingOpen(true)}>
                 Start logging
@@ -64,11 +83,12 @@ export default function Hero() {
                 Browse trending
               </button>
             </div>
-          </div>
+          ) : null}
         </div>
       </header>
 
-      {isLoggingOpen ? (
+      {/* Modal */}
+      {showActions && !actions && isLoggingOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
           role="dialog"
@@ -108,5 +128,5 @@ export default function Hero() {
         </div>
       ) : null}
     </>
-  )
+  );
 }

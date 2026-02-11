@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
-import Hero from '../components/Hero.jsx'
 import PopularAlbumsSection from '../components/PopularAlbumsSection.jsx'
 import StatsPanel from '../components/StatsPanel.jsx'
 import RecentlyListenedSection from '../components/RecentlyListenedSection.jsx'
@@ -200,8 +199,7 @@ export default function Home() {
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
         <div className="relative">
-          <Navbar className="absolute left-1/2 top-5 z-30 w-[min(100%,900px)] -translate-x-1/2" />
-          <Hero />
+          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
         </div>
         <main className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr]">
           <div className="min-w-0 space-y-8">

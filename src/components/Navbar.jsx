@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { BookOpen, Compass, House, MusicNotes } from 'phosphor-react'
+import { BookOpen, Compass, House, MusicNotes, SignOut } from 'phosphor-react'
 
 export default function Navbar({ className = '' }) {
   const navItemClass = ({ isActive }) =>
@@ -22,7 +22,7 @@ export default function Navbar({ className = '' }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-        <NavLink to="/" end className={navItemClass}>
+        <NavLink to="/home" end className={navItemClass}>
           <House size={14} weight="bold" className="transition" />
           Home
         </NavLink>
@@ -102,6 +102,13 @@ export default function Navbar({ className = '' }) {
               }
             >
               Friends
+            </NavLink>
+            <NavLink
+              to="/"
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-slate-900 transition hover:bg-black/5"
+            >
+              <SignOut size={14} weight="bold" />
+              Sign out
             </NavLink>
           </div>
         </div>

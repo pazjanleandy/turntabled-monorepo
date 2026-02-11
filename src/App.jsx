@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Home from './pages/Home.jsx'
+import Landing from './pages/Landing.jsx'
 import Profile from './pages/Profile.jsx'
 import ArtistProfile from './pages/ArtistProfile.jsx'
 import Explore from './pages/Explore.jsx'
@@ -14,7 +15,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/explore" element={<Explore />} />
         <Route path="/backlog" element={<Backlog />} />
