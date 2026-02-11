@@ -8,6 +8,7 @@ import LastFmRecentTracks from "../components/profile/LastFmRecentTracks.jsx";
 import ProfileCTA from "../components/profile/ProfileCTA.jsx";
 import ProfileHeader from "../components/profile/ProfileHeader.jsx";
 import ReplaceFavoriteModal from "../components/profile/ReplaceFavoriteModal.jsx";
+import ReviewsSection from "../components/profile/ReviewsSection.jsx";
 import StatsSection from "../components/profile/StatsSection.jsx";
 import LastFmConnectButton from "../components/LastFmConnectButton.jsx";
 import {
@@ -16,6 +17,7 @@ import {
   profileUser,
   recentCarouselAlbums,
   recentLogs,
+  reviews,
 } from "../data/profileData.js";
 import useAlbumCovers from "../hooks/useAlbumCovers.js";
 import useAlbumRatings from "../hooks/useAlbumRatings.js";
@@ -26,6 +28,7 @@ export default function Profile() {
   const recentCarousel = recentCarouselAlbums;
   const recent = recentLogs;
   const friendsList = friends;
+  const reviewList = reviews;
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [replaceFavoriteIndex, setReplaceFavoriteIndex] = useState(null);
@@ -180,6 +183,7 @@ export default function Profile() {
               recentRatings={recentRatings}
               onRecentRatingChange={handleRecentRatingChange}
             />
+            <ReviewsSection reviews={reviewList} />
           </aside>
 
           <aside className="flex flex-col gap-6 lg:col-span-4">

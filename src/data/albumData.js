@@ -1,0 +1,25 @@
+export const albumCatalog = {
+  'd2e42e38-f0a5-4750-8c5d-7eddf26287b8': {
+    id: 'd2e42e38-f0a5-4750-8c5d-7eddf26287b8',
+    title: 'clepsydra',
+    artist: 'chouchou merged syrups.',
+    releaseDate: '2014-06-25',
+    year: '2014',
+    label: '残響record',
+    catalogNumber: 'ZNR-133',
+    format: 'CD',
+    length: '24:45',
+    type: 'Album',
+    genres: ['electronic', 'post-rock', 'rock'],
+    cover: '',
+    tracks: [
+      { number: 1, title: '月光', length: '0:44' },
+      { number: 2, title: '斜陽', length: '3:23' },
+      { number: 3, title: '白昼夢は色彩の無い', length: '3:37' },
+      { number: 4, title: '踊る、そして', length: '4:11' },
+      { number: 5, title: 'Havfrue', length: '4:44' },
+      { number: 6, title: '風のように', length: '4:58' },
+      { number: 7, title: '橙鳴る', length: '3:08' },
+    ],
+  },
+}

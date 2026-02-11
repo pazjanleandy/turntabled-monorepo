@@ -1,7 +1,17 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { BookOpen, Compass, House, MusicNotes, SignOut } from 'phosphor-react'
+import useAuthStatus from '../hooks/useAuthStatus.js'
 
 export default function Navbar({ className = '' }) {
+  const navigate = useNavigate()
+  const { signOut } = useAuthStatus()
+
+  const handleSignOut = (event) => {
+    event.preventDefault()
+    signOut()
+    navigate('/')
+  }
+
   const navItemClass = ({ isActive }) =>
     [
       'group flex items-center gap-2 transition duration-200 hover:-translate-y-0.5',
@@ -105,6 +115,7 @@ export default function Navbar({ className = '' }) {
             </NavLink>
             <NavLink
               to="/"
+              onClick={handleSignOut}
               className="flex items-center gap-2 rounded-xl px-3 py-2 text-slate-900 transition hover:bg-black/5"
             >
               <SignOut size={14} weight="bold" />

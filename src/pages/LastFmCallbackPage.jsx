@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar.jsx";
+import BackButton from "../components/BackButton.jsx";
 
 export default function LastFmCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -59,6 +60,7 @@ export default function LastFmCallbackPage() {
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
         <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+        <BackButton className="self-start" />
 
         <section className="card vinyl-texture">
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">

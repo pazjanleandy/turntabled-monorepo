@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom'
+import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
+import BackButton from '../components/BackButton.jsx'
+import useAuthStatus from '../hooks/useAuthStatus.js'
 
 const artists = [
   {
@@ -23,10 +26,16 @@ const artists = [
 ]
 
 export default function Artists() {
+  const { isSignedIn } = useAuthStatus()
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-        <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+        {isSignedIn ? (
+          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+        ) : (
+          <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+        )}
+        <BackButton className="self-start" />
 
         <section className="card vinyl-texture">
           <div className="flex flex-col gap-3">

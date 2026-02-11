@@ -9,9 +9,10 @@ export const profileUser = {
 
 export const favoriteAlbums = [
   {
-    title: "Hakuchumuha Shiisainonai",
+    title: "clepsydra",
     artist: "chouchou merged syrups.",
     artistId: "chouchou",
+    releaseId: "d2e42e38-f0a5-4750-8c5d-7eddf26287b8",
     year: "2014",
     cover: "https://f4.bcbits.com/img/a0787078428_10.jpg",
     rating: 4.5,
@@ -150,5 +151,81 @@ export const friends = [
     initials: "NL",
     activity: "1w ago",
     note: "Listened to 12",
+  },
+];
+
+export const reviews = [
+  {
+    title: "Titanic Rising",
+    artist: "Weyes Blood",
+    year: "2019",
+    rating: 4.5,
+    summary: "A celestial slow burn with the best kind of soft-focus drama.",
+    timeAgo: "2d ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/2/2c/Weyes_Blood_-_Titanic_Rising.png",
+  },
+  {
+    title: "Punisher",
+    artist: "Phoebe Bridgers",
+    year: "2020",
+    rating: 4,
+    summary: "Spare, sharp, and oddly comforting. Every lyric lands.",
+    timeAgo: "5d ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/thumb/4/47/Phoebe_Bridgers_-_Punisher.png/220px-Phoebe_Bridgers_-_Punisher.png",
+  },
+  {
+    title: "In Rainbows",
+    artist: "Radiohead",
+    year: "2007",
+    rating: 5,
+    summary: "The warmest Radiohead record, still impossibly detailed.",
+    timeAgo: "1w ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/2/2e/In_Rainbows_Official_Cover.jpg",
+  },
+  {
+    title: "Cavalcade",
+    artist: "black midi",
+    year: "2021",
+    rating: 3.5,
+    summary: "Chaotic and theatrical. A little exhausting, mostly thrilling.",
+    timeAgo: "2w ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/thumb/2/21/Black_Midi_-_Cavalcade.png/220px-Black_Midi_-_Cavalcade.png",
+  },
+];
+
+export const recentReviews = [
+  {
+    title: "Desire, I Want to Turn Into You",
+    artist: "Caroline Polachek",
+    year: "2023",
+    rating: 4.5,
+    summary: "Fluent, glamorous pop with zero filler.",
+    timeAgo: "4h ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/thumb/7/7b/Caroline_Polachek_-_Desire%2C_I_Want_to_Turn_Into_You.png/220px-Caroline_Polachek_-_Desire%2C_I_Want_to_Turn_Into_You.png",
+  },
+  {
+    title: "Blonde",
+    artist: "Frank Ocean",
+    year: "2016",
+    rating: 4,
+    summary: "Still feels like a diary you are not supposed to read.",
+    timeAgo: "1d ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/thumb/a/a0/Blonde_-_Frank_Ocean.jpeg/220px-Blonde_-_Frank_Ocean.jpeg",
+  },
+  {
+    title: "Fetch the Bolt Cutters",
+    artist: "Fiona Apple",
+    year: "2020",
+    rating: 4.5,
+    summary: "Ferocious, funny, and incredibly alive.",
+    timeAgo: "3d ago",
+    cover:
+      "https://upload.wikimedia.org/wikipedia/en/thumb/3/32/Fiona_Apple_-_Fetch_the_Bolt_Cutters.png/220px-Fiona_Apple_-_Fetch_the_Bolt_Cutters.png",
   },
 ];

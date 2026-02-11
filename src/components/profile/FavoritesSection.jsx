@@ -32,15 +32,42 @@ export default function FavoritesSection({
         <div className="scrollbar-sleek grid auto-cols-[160px] grid-flow-col gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2">
           {favorites.slice(0, 5).map((album) => {
             const key = `${album.artist} - ${album.title}`
+            const albumLink = album.releaseId
+              ? `/album/${album.releaseId}`
+              : null
             return (
               <div key={album.title} className="snap-start space-y-2">
-                <CoverImage
-                  src={favoriteCovers[key] ?? album.cover}
-                  alt={`${album.title} cover`}
-                  className="h-40 w-40 object-cover"
-                />
+                {albumLink ? (
+                  <Link
+                    to={albumLink}
+                    className="block transition hover:-translate-y-0.5"
+                  >
+                    <CoverImage
+                      src={favoriteCovers[key] ?? album.cover}
+                      alt={`${album.title} cover`}
+                      className="h-40 w-40 object-cover"
+                    />
+                  </Link>
+                ) : (
+                  <CoverImage
+                    src={favoriteCovers[key] ?? album.cover}
+                    alt={`${album.title} cover`}
+                    className="h-40 w-40 object-cover"
+                  />
+                )}
                 <div>
-                  <p className="mb-0 text-xs font-semibold text-text">{album.title}</p>
+                  {albumLink ? (
+                    <Link
+                      to={albumLink}
+                      className="mb-0 block text-xs font-semibold text-text transition hover:text-accent"
+                    >
+                      {album.title}
+                    </Link>
+                  ) : (
+                    <p className="mb-0 text-xs font-semibold text-text">
+                      {album.title}
+                    </p>
+                  )}
                   {album.artistId ? (
                     <Link
                       to={`/artist/${album.artistId}`}

@@ -2,11 +2,13 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Compass, House, MusicNotes, SignIn } from 'phosphor-react'
 import SignInModal from './auth/SignInModal.jsx'
+import useAuthStatus from '../hooks/useAuthStatus.js'
 
 export default function NavbarGuest({ className = '' }) {
   const [isSignInOpen, setIsSignInOpen] = useState(false)
   const [modalTop, setModalTop] = useState(null)
   const navRef = useRef(null)
+  const { signIn } = useAuthStatus()
 
   useLayoutEffect(() => {
     if (!isSignInOpen) return undefined
@@ -75,6 +77,10 @@ export default function NavbarGuest({ className = '' }) {
       <SignInModal
         isOpen={isSignInOpen}
         onClose={() => setIsSignInOpen(false)}
+        onSignIn={() => {
+          signIn()
+          setIsSignInOpen(false)
+        }}
         anchorTop={modalTop}
       />
     </>

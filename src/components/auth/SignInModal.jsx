@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { X } from "phosphor-react";
 
-export default function SignInModal({ isOpen, onClose, anchorTop }) {
+export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
   const panelRef = useRef(null);
 
   useEffect(() => {
@@ -97,7 +97,10 @@ export default function SignInModal({ isOpen, onClose, anchorTop }) {
 
               <Link
                 to="/home"
-                onClick={() => onClose?.()}
+                onClick={() => {
+                  onSignIn?.()
+                  onClose?.()
+                }}
                 className="btn-primary inline-flex items-center px-4 py-2 text-xs"
               >
                 Sign in

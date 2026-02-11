@@ -25,6 +25,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `/favorites` Favorites
 - `/activity` Activity
 - `/friends` Friends
+- `/album/:releaseId` Album detail page
 - `/auth/lastfm/callback` Last.fm OAuth callback
 - `/artist/:artistId` Artist profile (loaded from JSON in `src/data/artists`)
 
@@ -32,12 +33,14 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/data/artists/*.json` one file per artist
 - `src/data/loadArtists.js` uses `import.meta.glob` to load all artist JSON files (eager) and attach `id` from filename
 - `src/data/profileData.js` mock profile data and lists (added Feb 11, 2026)
+- `src/data/albumData.js` static album release + tracklist data (added Feb 11, 2026)
 
 **Pages**
 - `src/pages/Landing.jsx` guest landing page (added Feb 11, 2026)
 - `src/pages/Home.jsx` signed-in home feed
 - `src/pages/Profile.jsx` profile and activity views
 - `src/pages/LastFmCallbackPage.jsx` Last.fm OAuth callback handler (added Feb 11, 2026)
+- `src/pages/AlbumPage.jsx` album detail + tracklist view (added Feb 11, 2026)
 - `src/pages/ArtistProfile.jsx` artist profile detail view
 - `src/pages/Explore.jsx` explore filters/search placeholder (added Feb 11, 2026)
 - `src/pages/Backlog.jsx` backlog placeholder (added Feb 11, 2026)
@@ -49,6 +52,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 **Core Components**
 - `src/components/Navbar.jsx` top navigation
 - `src/components/NavbarGuest.jsx` guest navigation (added Feb 11, 2026)
+- `src/components/BackButton.jsx` back navigation button (added Feb 11, 2026)
 - `src/components/Hero.jsx` hero image carousel
 - `src/components/PopularAlbumsSection.jsx` trending albums carousel
 - `src/components/RecentlyListenedSection.jsx` recently listened carousel with rating
@@ -67,6 +71,8 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/components/profile/FavoritesSection.jsx` favorites + recent carousel (added Feb 11, 2026)
 - `src/components/profile/LatestLogsSection.jsx` latest logs card (added Feb 11, 2026)
 - `src/components/profile/FriendsSection.jsx` friends list card (added Feb 11, 2026)
+- `src/components/profile/ReviewsSection.jsx` reviews tab section (added Feb 11, 2026)
+- `src/components/profile/ReviewRow.jsx` review row layout (added Feb 11, 2026)
 - `src/components/profile/ProfileCTA.jsx` profile CTA block (added Feb 11, 2026)
 - `src/components/profile/EditProfileModal.jsx` edit profile modal (added Feb 11, 2026)
 - `src/components/profile/ReplaceFavoriteModal.jsx` replace favorite modal (added Feb 11, 2026)
@@ -80,6 +86,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 **Hooks**
 - `src/hooks/useAlbumCovers.js` fetches album art from iTunes (added Feb 11, 2026)
 - `src/hooks/useAlbumRatings.js` rating state helper (added Feb 11, 2026)
+- `src/hooks/useAuthStatus.js` front-end auth flag for navbar switching (added Feb 11, 2026)
 
 **Last.fm Callback**
 - Production callback URL: `https://turntabled-monorepo.vercel.app/auth/lastfm/callback`
@@ -111,6 +118,9 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - Guest landing page + guest navbar.
 - Create account + sign-in modals as standalone components.
 - Last.fm connect button and recent tracks module.
+- Album detail page with tracklist and logging panel.
+- Back button on non-landing/profile/home pages.
+- Reviews section on profile (tabbed list).
 
 **Notes**
 - This project uses React Router. If you deploy to static hosting, configure history fallback to `index.html` so deep links work.
