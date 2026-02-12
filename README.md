@@ -34,6 +34,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/data/loadArtists.js` uses `import.meta.glob` to load all artist JSON files (eager) and attach `id` from filename
 - `src/data/profileData.js` mock profile data and lists (added Feb 11, 2026)
 - `src/data/albumData.js` static album release + tracklist data (added Feb 11, 2026)
+- `src/data/loggedAlbums.js` mock log entries for the logged albums page (added Feb 12, 2026)
 
 **Pages**
 - `src/pages/Landing.jsx` guest landing page (added Feb 11, 2026)
@@ -46,7 +47,7 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 - `src/pages/Backlog.jsx` backlog placeholder (added Feb 11, 2026)
 - `src/pages/Artists.jsx` artist list page (added Feb 11, 2026)
 - `src/pages/Favorites.jsx` favorites placeholder (added Feb 11, 2026)
-- `src/pages/Activity.jsx` activity placeholder (added Feb 11, 2026)
+- `src/pages/Activity.jsx` logged albums page with search + filters (added Feb 12, 2026)
 - `src/pages/Friends.jsx` friends placeholder (added Feb 11, 2026)
 
 **Core Components**
@@ -103,11 +104,17 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 **Assets**
 - `public/hero/*` hero background images used by `Hero.jsx`
 - `public/profile/rainy.jpg` profile avatar used in Navbar and Profile
+- `public/photos/*` logged album photos and thumbnails used on the Activity page (added Feb 12, 2026)
 
 **Add a new artist**
 1. Create a JSON file in `src/data/artists/` named by the artist ID, e.g. `radiohead.json`.
 2. Include fields like `name`, `origin`, `genres`, `bio`, `notableAlbums`.
 3. Link to `/artist/radiohead` from anywhere using `Link` or `to="/artist/radiohead"`.
+
+**What We Added Today (Feb 12, 2026)**
+- Logged albums Activity page with search and sorting filters.
+- Logged albums mock data in `src/data/loggedAlbums.js`.
+- `public/photos` image set used by the logged albums page.
 
 **What We Added Today (Feb 11, 2026)**
 - Explore, Backlog, Artists, Favorites, Activity, Friends placeholder pages and routes.
