@@ -1,48 +1,101 @@
-import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
-import { X } from "phosphor-react";
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { X } from 'phosphor-react'
+import { supabase } from '../../supabase'
 
 export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
-  const panelRef = useRef(null);
+  const panelRef = useRef(null)
+  const [identifier, setIdentifier] = useState('')
+  const [password, setPassword] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const closeModal = useCallback(() => {
+    setIdentifier('')
+    setPassword('')
+    setErrorMessage('')
+    setIsSubmitting(false)
+    onClose?.()
+  }, [onClose])
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return
 
     const onKeyDown = (e) => {
-      if (e.key === "Escape") onClose?.();
-    };
+      if (e.key === 'Escape') closeModal()
+    }
 
-    // Close when clicking anywhere OUTSIDE the modal content,
-    // even if something else is layered above it (capture phase).
     const onPointerDownCapture = (e) => {
-      const panel = panelRef.current;
-      if (!panel) return;
+      const panel = panelRef.current
+      if (!panel) return
 
-      // If the click/tap happened inside the modal, do nothing.
-      if (panel.contains(e.target)) return;
+      if (panel.contains(e.target)) return
 
-      onClose?.();
-    };
+      closeModal()
+    }
 
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDownCapture, true);
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDownCapture, true)
 
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDownCapture, true);
-    };
-  }, [isOpen, onClose]);
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDownCapture, true)
+    }
+  }, [isOpen, closeModal])
 
-  if (!isOpen) return null;
+  const resolveEmail = async (rawIdentifier) => {
+    const value = rawIdentifier.trim().toLowerCase()
+    if (value.includes('@')) return { email: value, error: null }
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('email')
+      .eq('username', value)
+      .maybeSingle()
+
+    if (error) return { email: null, error }
+    if (!data?.email) return { email: null, error: new Error('Username not found') }
+    return { email: data.email, error: null }
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setErrorMessage('')
+
+    if (!identifier.trim() || !password) {
+      setErrorMessage('Please enter your email or username and password.')
+      return
+    }
+
+    setIsSubmitting(true)
+
+    const { email, error: resolveError } = await resolveEmail(identifier)
+    if (resolveError || !email) {
+      setErrorMessage('Could not find that username. Try using your email instead.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInError) {
+      setErrorMessage(signInError.message)
+      setIsSubmitting(false)
+      return
+    }
+
+    onSignIn?.()
+    closeModal()
+    setIsSubmitting(false)
+  }
+
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none">
-      {/* Optional backdrop (still fine to keep) */}
       <button
         type="button"
         aria-label="Close sign in modal"
         className="absolute inset-0 rounded-none border-0 bg-transparent p-0 shadow-none outline-none pointer-events-auto focus:outline-none"
-        onClick={onClose}
+        onClick={closeModal}
       />
 
       <div
@@ -57,18 +110,20 @@ export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
             <button
               type="button"
               className="absolute right-3 top-3 rounded-full border border-black/10 p-1 text-muted transition hover:text-text"
-              onClick={onClose}
+              onClick={closeModal}
               aria-label="Close sign in"
             >
               <X size={14} weight="bold" />
             </button>
 
-            <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={handleSubmit}>
               <label className="flex-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-                Username
+                Email or username
                 <input
                   type="text"
-                  placeholder="username"
+                  placeholder="you@email.com or username"
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm font-medium text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
                 />
               </label>
@@ -78,6 +133,8 @@ export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
                 <input
                   type="password"
                   placeholder="********"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm font-medium text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
                 />
               </label>
@@ -85,7 +142,7 @@ export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
               <button
                 type="button"
                 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent transition hover:text-[#ef6b2f]"
-                onClick={onClose}
+                onClick={closeModal}
               >
                 Forgotten?
               </button>
@@ -95,20 +152,22 @@ export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
                 Remember me
               </label>
 
-              <Link
-                to="/home"
-                onClick={() => {
-                  onSignIn?.()
-                  onClose?.()
-                }}
-                className="btn-primary inline-flex items-center px-4 py-2 text-xs"
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="btn-primary inline-flex items-center px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Sign in
-              </Link>
-            </div>
+                {isSubmitting ? 'Signing in...' : 'Sign in'}
+              </button>
+              {errorMessage ? (
+                <p className="w-full text-xs font-semibold text-red-600" role="alert">
+                  {errorMessage}
+                </p>
+              ) : null}
+            </form>
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }
