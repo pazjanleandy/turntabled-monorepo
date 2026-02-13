@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { UserPlus } from 'phosphor-react'
+import { useNavigate } from 'react-router-dom'
 import Hero from '../components/Hero.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
 import CreateAccountModal from '../components/auth/CreateAccountModal.jsx'
+import useAuthStatus from '../hooks/useAuthStatus.js'
 
 export default function Landing() {
   const [isSignupOpen, setIsSignupOpen] = useState(false)
+  const navigate = useNavigate()
+  const { signIn } = useAuthStatus()
 
   return (
     <div className="min-h-screen pb-16 pt-0">
@@ -34,6 +38,11 @@ export default function Landing() {
       <CreateAccountModal
         isOpen={isSignupOpen}
         onClose={() => setIsSignupOpen(false)}
+        onSignIn={() => {
+          signIn()
+          setIsSignupOpen(false)
+          navigate('/home')
+        }}
       />
 
       <section className="mx-auto -mt-10 grid w-full max-w-6xl grid-cols-1 gap-4 px-5 md:grid-cols-3 md:px-10 lg:px-16">

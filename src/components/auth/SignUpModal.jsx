@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X } from 'phosphor-react'
 import { supabase } from '../../supabase'
 
-export default function SignUpModal({ isOpen, onClose }) {
+export default function SignUpModal({ isOpen, onClose, onSignIn }) {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -86,7 +86,18 @@ export default function SignUpModal({ isOpen, onClose }) {
       return
     }
 
-    setSuccessMessage('Account created. Check your email to verify your account.')
+    const hasSession = Boolean(signUpData?.session)
+    const needsEmailVerification = !hasSession && !signUpData?.user?.email_confirmed_at
+
+    if (hasSession) {
+      onSignIn?.()
+      setSuccessMessage('Account created and signed in.')
+    } else if (needsEmailVerification) {
+      setSuccessMessage('Account created. Check your email and confirm your account before signing in.')
+    } else {
+      setSuccessMessage('Account created. You can now sign in.')
+    }
+
     resetForm()
     setIsSubmitting(false)
   }
@@ -180,7 +191,6 @@ export default function SignUpModal({ isOpen, onClose }) {
               and consent to the processing of my personal information.
             </span>
           </label>
-          {/* Comment ko muna tong captcha di ko alam pano integrate pato if dapat sa database
           <div className="rounded-lg border border-black/10 bg-white/80 p-3 text-muted">
             <div className="flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 text-xs font-semibold text-text">
@@ -195,7 +205,6 @@ export default function SignUpModal({ isOpen, onClose }) {
               <div className="text-[10px] font-semibold text-muted">reCAPTCHA</div>
             </div>
           </div>
-          */}
           {errorMessage ? (
             <p className="text-xs font-semibold text-red-600">{errorMessage}</p>
           ) : null}

@@ -77,7 +77,14 @@ export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
 
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
     if (signInError) {
-      setErrorMessage(signInError.message)
+      const rawMessage = signInError.message || ''
+      const normalizedMessage = rawMessage.toLowerCase()
+
+      if (normalizedMessage.includes('email not confirmed')) {
+        setErrorMessage('Email not confirmed. Open the verification email, then sign in again.')
+      } else {
+        setErrorMessage(rawMessage)
+      }
       setIsSubmitting(false)
       return
     }
