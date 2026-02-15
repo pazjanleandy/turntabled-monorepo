@@ -1,3 +1,4 @@
+/* global process, Buffer */
 import { createHash } from "crypto";
 
 function md5(input) {

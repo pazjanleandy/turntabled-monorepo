@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
 import BackButton from '../components/BackButton.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
-import { albumCatalog } from '../data/albumData.js'
+import { supabase } from '../supabase.js'
 
 const FILTER_OPTIONS = [
   { value: 'a-z', label: 'Alphabetical A-Z' },
@@ -20,9 +20,99 @@ export default function Explore() {
   const { isSignedIn } = useAuthStatus()
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
+  const [apiAlbums, setApiAlbums] = useState([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const lastFetchAtRef = useRef(0)
   const fallbackFilter = FILTER_OPTIONS[0]?.value ?? 'a-z'
   const activeFilter = searchParams.get('filter') ?? fallbackFilter
-  const albums = useMemo(() => Object.values(albumCatalog), [])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    let debounceTimer = null
+
+    const loadExploreAlbums = async () => {
+      setIsLoading(true)
+      setLoadError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const username = window.localStorage.getItem('lastfmUsername')
+        const headers = {}
+        const { data } = await supabase.auth.getSession()
+        const userId = data?.session?.user?.id
+
+        if (userId) {
+          headers['x-user-id'] = userId
+        }
+        if (username) {
+          headers['x-username'] = username
+        }
+
+        const minIntervalMs = 1000
+        const elapsedMs = Date.now() - lastFetchAtRef.current
+        if (elapsedMs < minIntervalMs) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, minIntervalMs - elapsedMs)
+          })
+        }
+
+        const response = await fetch(`${apiBase}/api/explore?page=1&limit=50`, {
+          headers,
+          signal: controller.signal,
+        })
+        lastFetchAtRef.current = Date.now()
+
+        if (!response.ok) {
+          throw new Error('Failed to load explore albums.')
+        }
+
+        const payload = await response.json()
+        const items = Array.isArray(payload?.items) ? payload.items : []
+
+        const mapped = items.map((item) => {
+          const title = item?.albumTitle ?? 'Unknown Album'
+          const artist = item?.artistName ?? 'Unknown Artist'
+          return {
+            id: item?.backlogId ?? item?.albumId ?? `${artist}-${title}`,
+            title,
+            artist,
+            cover: item?.coverArtUrl || '/album/am.jpg',
+            year: item?.lastSyncedAt ? new Date(item.lastSyncedAt).getFullYear().toString() : '0',
+          }
+        })
+
+        if (!cancelled) {
+          setApiAlbums(mapped)
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        if (!cancelled) {
+          setLoadError(error?.message ?? 'Unable to load albums.')
+          setApiAlbums([])
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    debounceTimer = setTimeout(() => {
+      loadExploreAlbums()
+    }, 250)
+
+    return () => {
+      cancelled = true
+      controller.abort()
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
+    }
+  }, [isSignedIn])
+
+  const albums = useMemo(() => apiAlbums, [apiAlbums])
 
   const visibleAlbums = useMemo(() => {
     const term = query.trim().toLowerCase()
@@ -103,7 +193,15 @@ export default function Explore() {
             </span>
           </div>
 
-          {visibleAlbums.length === 0 ? (
+          {isLoading ? (
+            <div className="rounded-2xl border border-black/5 bg-white/70 p-6 text-sm text-muted">
+              Loading albums...
+            </div>
+          ) : loadError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+              {loadError}
+            </div>
+          ) : visibleAlbums.length === 0 ? (
             <div className="rounded-2xl border border-black/5 bg-white/70 p-6 text-sm text-muted">
               No albums matched your search.
             </div>

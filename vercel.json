@@ -1,4 +1,7 @@
 {
+  "crons": [
+    { "path": "/api/internal/musicbrainz-worker", "schedule": "* * * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/" }
