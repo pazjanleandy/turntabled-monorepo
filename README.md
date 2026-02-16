@@ -15,6 +15,25 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 3. Build for production: `npm run build`
 4. Preview production build: `npm run preview`
 
+**MusicBrainz API Local Connection Guideline**
+1. Install Vercel CLI:
+   - `npm install -g vercel`
+2. Initialize Vercel (first time only):
+   - `vercel dev`
+3. Choose these setup options when prompted:
+   - Do not link to an existing project
+   - Do not detect a repository
+   - Use local development settings
+4. Run the backend (Terminal 1):
+   - `vercel dev --listen 3001`
+5. Run the frontend (Terminal 2):
+   - `npm run dev`
+
+Why two terminals are needed:
+- `vercel dev` runs the backend API on port `3001`.
+- `npm run dev` runs the Vite frontend on port `5173`.
+- Both must run together for the frontend to communicate with the backend.
+
 **Routing**
 - `/` Landing (guest)
 - `/home` Home (signed-in feed)
@@ -131,3 +150,4 @@ Album logging UI built with React + Vite + Tailwind + React Router. The app incl
 
 **Notes**
 - This project uses React Router. If you deploy to static hosting, configure history fallback to `index.html` so deep links work.
+- Sign up check spam for confirmation of account
