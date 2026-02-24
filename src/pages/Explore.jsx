@@ -74,8 +74,10 @@ export default function Explore() {
         const mapped = items.map((item) => {
           const title = item?.albumTitle ?? 'Unknown Album'
           const artist = item?.artistName ?? 'Unknown Artist'
+          const albumId = item?.albumId ?? null
           return {
             id: item?.backlogId ?? item?.albumId ?? `${artist}-${title}`,
+            albumId,
             title,
             artist,
             cover: item?.coverArtUrl || '/album/am.jpg',
@@ -86,6 +88,7 @@ export default function Explore() {
         if (!cancelled) {
           setApiAlbums(mapped)
         }
+
       } catch (error) {
         if (error?.name === 'AbortError') return
         if (!cancelled) {
@@ -208,21 +211,21 @@ export default function Explore() {
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {visibleAlbums.map((album) => (
-                <Link
+                <div
                   key={album.id}
-                  to={`/album/${album.id}`}
-                  className="group relative overflow-hidden rounded-xl border border-black/10 bg-black/70 shadow-[0_16px_30px_-22px_rgba(15,15,15,0.45)] transition hover:-translate-y-1"
+                  className="group relative overflow-hidden rounded-xl border border-black/10 bg-black/70 shadow-[0_16px_30px_-22px_rgba(15,15,15,0.45)]"
                 >
-                  <CoverImage
-                    src={album.cover}
-                    alt={`${album.title} cover`}
-                    className="aspect-[3/4] w-full object-cover transition duration-300 group-hover:scale-105 group-hover:brightness-75"
-                  />
-
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/65 p-3 opacity-0 transition duration-200 group-hover:opacity-100">
-                    <p className="text-center text-sm font-semibold text-white">{album.artist}</p>
-                  </div>
-                </Link>
+                  <Link to={`/album/${album.id}`} className="block">
+                    <CoverImage
+                      src={album.cover}
+                      alt={`${album.title} cover`}
+                      className="aspect-[3/4] w-full object-cover transition duration-300 group-hover:scale-105 group-hover:brightness-75"
+                    />
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/65 p-3 opacity-0 transition duration-200 group-hover:opacity-100">
+                      <p className="text-center text-sm font-semibold text-white">{album.artist}</p>
+                    </div>
+                  </Link>
+                </div>
               ))}
             </div>
           )}

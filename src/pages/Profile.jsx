@@ -11,6 +11,8 @@ import ReplaceFavoriteModal from "../components/profile/ReplaceFavoriteModal.jsx
 import ReviewsSection from "../components/profile/ReviewsSection.jsx";
 import StatsSection from "../components/profile/StatsSection.jsx";
 import LastFmConnectButton from "../components/LastFmConnectButton.jsx";
+import useAuthStatus from "../hooks/useAuthStatus.js";
+import { buildApiAuthHeaders } from "../lib/apiAuth.js";
 import {
   favoriteAlbums,
   friends,
@@ -23,6 +25,7 @@ import useAlbumCovers from "../hooks/useAlbumCovers.js";
 import useAlbumRatings from "../hooks/useAlbumRatings.js";
 
 export default function Profile() {
+  const { isSignedIn } = useAuthStatus();
   const user = profileUser;
   const favorites = favoriteAlbums;
   const recentCarousel = recentCarouselAlbums;
@@ -40,6 +43,8 @@ export default function Profile() {
     loading: false,
     error: "",
   });
+  const [backlogPreview, setBacklogPreview] = useState([]);
+  const [backlogLoading, setBacklogLoading] = useState(false);
 
   const favoriteCovers = useAlbumCovers(favorites);
 
@@ -57,6 +62,47 @@ export default function Profile() {
       document.body.style.overflow = originalOverflow;
     };
   }, [isEditOpen]);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setBacklogPreview([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadBacklogPreview() {
+      setBacklogLoading(true);
+      try {
+        const apiBase = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL ?? "";
+        const authHeaders = await buildApiAuthHeaders();
+        const response = await fetch(`${apiBase}/api/backlog?page=1&limit=5`, {
+          headers: authHeaders,
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error?.message ?? "Failed to load backlog.");
+        }
+
+        if (!cancelled) {
+          setBacklogPreview(Array.isArray(payload?.items) ? payload.items : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setBacklogPreview([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setBacklogLoading(false);
+        }
+      }
+    }
+
+    loadBacklogPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn]);
 
   useEffect(() => {
     if (!lastfmUsername) {
@@ -187,6 +233,38 @@ export default function Profile() {
           </aside>
 
           <aside className="flex flex-col gap-6 lg:col-span-4">
+            <section className="card vinyl-texture">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                    Backlog
+                  </p>
+                  <h3 className="mb-0 text-lg text-text">Saved albums</h3>
+                </div>
+              </div>
+              {backlogLoading ? (
+                <p className="mb-0 text-sm text-muted">Loading backlog...</p>
+              ) : backlogPreview.length === 0 ? (
+                <p className="mb-0 text-sm text-muted">No backlog items yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {backlogPreview.map((item) => (
+                    <li key={item.id} className="flex items-center gap-3">
+                      <img
+                        src={item.coverArtUrl || "/album/am.jpg"}
+                        alt={`${item.albumTitleRaw} cover`}
+                        className="h-12 w-12 rounded-lg border border-black/5 object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-0 truncate text-sm font-semibold text-text">{item.albumTitleRaw}</p>
+                        <p className="mb-0 truncate text-xs text-muted">{item.artistNameRaw}</p>
+                      </div>
+                      <span className="text-xs font-semibold text-amber-500">{item.rating ?? 0}/5</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
             <LatestLogsSection recent={recent} />
             <FriendsSection friends={friendsList} />
             <LastFmRecentTracks

@@ -25,3 +25,11 @@ export function getExploreEnv() {
     EXPLORE_WORKER_SECRET: requireEnv("EXPLORE_WORKER_SECRET"),
   };
 }
+
+export function getBacklogEnv() {
+  return {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    SUPABASE_URL: requireEnv("SUPABASE_URL"),
+    SUPABASE_SERVICE_ROLE_KEY: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+}

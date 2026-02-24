@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Calendar, CaretDown, Star, X } from 'phosphor-react'
+import { buildApiAuthHeaders } from '../../lib/apiAuth.js'
 
 const statusOptions = [
   { value: 'completed', label: 'Completed', dotClass: 'bg-emerald-400' },
@@ -12,14 +13,20 @@ const statusOptions = [
 export default function LogDatesModal({
   isOpen,
   onClose,
+  albumId = '',
   albumTitle = '',
   albumArtist = '',
   albumArt = '',
+  onSaved = null,
 }) {
   const [isStatusOpen, setIsStatusOpen] = useState(false)
   const [selectedStatus, setSelectedStatus] = useState('pending')
   const [selectedRating, setSelectedRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
+  const [notes, setNotes] = useState('')
+  const [listenedOn, setListenedOn] = useState(() => new Date().toISOString().split('T')[0])
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const today = new Date().toISOString().split('T')[0]
   const selectedStatusOption = useMemo(
     () => statusOptions.find((status) => status.value === selectedStatus) ?? statusOptions[3],
@@ -35,6 +42,63 @@ export default function LogDatesModal({
       document.body.style.overflow = originalOverflow
     }
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    setIsStatusOpen(false)
+    setSelectedStatus('pending')
+    setSelectedRating(0)
+    setHoverRating(0)
+    setNotes('')
+    setListenedOn(today)
+    setSaveError('')
+  }, [isOpen, today])
+
+  const handleSave = async () => {
+    if (!albumId || isSaving) return
+    if (selectedRating < 1 || selectedRating > 5) {
+      setSaveError('Please select a rating from 1 to 5 stars.')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveError('')
+
+    try {
+      const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+      const authHeaders = await buildApiAuthHeaders()
+      const response = await fetch(`${apiBase}/api/backlog`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          albumId,
+          artistNameRaw: albumArtist,
+          albumTitleRaw: albumTitle,
+          status: selectedStatus,
+          rating: selectedRating,
+          listenedOn,
+          notes: notes.trim() || null,
+        }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? 'Failed to save album log.')
+      }
+
+      if (typeof onSaved === 'function') {
+        onSaved(payload?.item ?? null)
+      }
+      onClose()
+    } catch (error) {
+      setSaveError(error?.message ?? 'Unable to save album log.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   if (!isOpen) return null
 
@@ -157,6 +221,8 @@ export default function LogDatesModal({
             </span>
             <textarea
               rows={4}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
               placeholder="Add quick thoughts about this listen."
               className="w-full resize-none rounded-2xl border border-black/10 bg-white/80 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black/30"
             />
@@ -169,7 +235,8 @@ export default function LogDatesModal({
             <div className="relative">
               <input
                 type="date"
-                defaultValue={today}
+                value={listenedOn}
+                onChange={(event) => setListenedOn(event.target.value)}
                 className="w-full rounded-2xl border border-black/10 bg-white/80 px-4 py-3 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-black/30"
               />
               <Calendar
@@ -181,19 +248,24 @@ export default function LogDatesModal({
           </label>
         </div>
 
+        {saveError ? <p className="mb-0 mt-3 text-sm font-semibold text-red-700">{saveError}</p> : null}
+
         <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
             className="rounded-full border border-black/15 bg-transparent px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-black/5"
             onClick={onClose}
+            disabled={isSaving}
           >
             Cancel
           </button>
           <button
             type="button"
             className="rounded-full border border-black bg-black px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_25px_-16px_rgba(15,15,15,0.6)] transition hover:-translate-y-0.5 hover:bg-black/90"
+            onClick={handleSave}
+            disabled={isSaving || !albumId}
           >
-            Save log album
+            {isSaving ? 'Saving...' : 'Save log album'}
           </button>
         </div>
       </div>

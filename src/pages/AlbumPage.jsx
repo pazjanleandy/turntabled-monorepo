@@ -64,6 +64,7 @@ export default function AlbumPage() {
   const [loadError, setLoadError] = useState("");
   const [isLogDatesOpen, setIsLogDatesOpen] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [logNotice, setLogNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -284,12 +285,23 @@ export default function AlbumPage() {
         </section>
       </div>
 
+      {logNotice ? (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-50 rounded-full border border-black/10 bg-white/95 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,15,15,0.45)]">
+          {logNotice}
+        </div>
+      ) : null}
+
       <LogDatesModal
         isOpen={isLogDatesOpen}
         onClose={() => setIsLogDatesOpen(false)}
+        albumId={safeAlbum?.id}
         albumTitle={safeAlbum?.title}
         albumArtist={safeAlbum?.artist}
         albumArt={safeAlbum?.cover}
+        onSaved={() => {
+          setLogNotice("Album logged")
+          window.setTimeout(() => setLogNotice(""), 2200)
+        }}
       />
       <ReviewModal
         isOpen={isReviewOpen}
