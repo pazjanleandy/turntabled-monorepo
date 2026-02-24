@@ -41,10 +41,10 @@ function LogCard({ onLogDates, onWriteReview, disabled }) {
             className="inline-flex items-center gap-2 rounded-full border border-black/5 bg-white/90 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onLogDates}
             disabled={disabled}
-            title={disabled ? "Login required" : "Log your dates"}
+            title={disabled ? "Login required" : "Log album"}
           >
             <CalendarPlus size={14} weight="bold" />
-            Log your dates
+            Log album
           </button>
         </div>
       </div>
@@ -288,6 +288,8 @@ export default function AlbumPage() {
         isOpen={isLogDatesOpen}
         onClose={() => setIsLogDatesOpen(false)}
         albumTitle={safeAlbum?.title}
+        albumArtist={safeAlbum?.artist}
+        albumArt={safeAlbum?.cover}
       />
       <ReviewModal
         isOpen={isReviewOpen}
