@@ -1,19 +1,16 @@
 import { makeResourceKey } from "./normalize.js";
 
-function mapExploreItem(backlogItem, album) {
-  const coverArtUrl =
-    album?.cover_art_url ??
-    (album?.mbid ? `https://coverartarchive.org/release/${album.mbid}/front-500` : null);
-
+function mapExploreAlbumItem(album) {
+  const coverArtUrl = album?.cover_art_url ?? (album?.mbid ? `https://coverartarchive.org/release/${album.mbid}/front-500` : null);
   return {
-    backlogId: backlogItem.id,
-    status: backlogItem.status,
-    addedAt: backlogItem.added_at,
-    artistName: album?.artist?.name ?? backlogItem.artist_name_raw,
-    albumTitle: album?.title ?? backlogItem.album_title_raw,
+    backlogId: null,
+    status: null,
+    addedAt: null,
+    artistName: album?.artist?.name ?? "Unknown Artist",
+    albumTitle: album?.title ?? "Unknown Album",
     coverArtUrl,
-    hydrated: Boolean(album),
-    albumId: album?.id ?? backlogItem.album_id ?? null,
+    hydrated: true,
+    albumId: album?.id ?? null,
     lastSyncedAt: album?.last_synced_at ?? null,
   };
 }
@@ -28,52 +25,15 @@ export class ExploreService {
   }
 
   async getExplorePage(userId, page, limit) {
-    const { rows, total } = userId
-      ? await this.backlogRepository.findByUser(userId, page, limit)
-      : await this.backlogRepository.findLatest(page, limit);
-    const resultItems = [];
-    let hydrationPendingCount = 0;
-
-    for (const row of rows) {
-      let album = null;
-
-      if (row.album_id) {
-        album = await this.albumRepository.findById(row.album_id);
-      }
-      if (!album) {
-        const artist = await this.artistRepository.findByNormalizedName(row.artist_name_raw);
-        if (artist?.id) {
-          album = await this.albumRepository.findByNormalized(artist.id, row.album_title_raw);
-        }
-      }
-
-      if (album?.id && row.album_id !== album.id) {
-        await this.backlogRepository.attachAlbum(row.id, album.id);
-      }
-
-      if (!album) {
-        const job = {
-          resourceKey: makeResourceKey(row.artist_name_raw, row.album_title_raw),
-          artistName: row.artist_name_raw,
-          albumTitle: row.album_title_raw,
-          backlogId: row.id,
-          userId: row.user_id ?? userId ?? null,
-          attempt: 0,
-          createdAt: new Date().toISOString(),
-        };
-        await this.queueService.enqueueIfMissing(job);
-        hydrationPendingCount += 1;
-      }
-
-      resultItems.push(mapExploreItem(row, album));
-    }
+    const { rows, total } = await this.albumRepository.findLatestForExplore(page, limit);
+    const resultItems = rows.map((row) => mapExploreAlbumItem(row));
 
     return {
       page,
       limit,
-      scope: userId ? "user" : "public",
+      scope: "catalog",
       total,
-      hydrationPendingCount,
+      hydrationPendingCount: 0,
       items: resultItems,
     };
   }

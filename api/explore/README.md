@@ -7,8 +7,9 @@
     - `x-user-id: <uuid>`, or
     - `x-username: <username>`, or
     - `x-email: <email>`
-  - Returns cached backlog + album metadata.
-  - Missing metadata is enqueued for asynchronous hydration.
+  - Returns global album catalog from cached `album` table (`scope: catalog`).
+  - This endpoint is read-only discovery and is not tied to user backlog data.
+  - Backlog remains a separate module/flow.
 - `POST /api/internal/musicbrainz-worker`
   - Auth: `Authorization: Bearer <EXPLORE_WORKER_SECRET>` or `x-worker-secret`.
   - Processes queued MusicBrainz hydration jobs with strict global 1 request/second gate.

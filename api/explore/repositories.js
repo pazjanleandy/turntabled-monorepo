@@ -117,6 +117,24 @@ export class AlbumRepository {
     this.supabase = supabase;
   }
 
+  async findLatestForExplore(page, limit) {
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error, count } = await this.supabase
+      .from("album")
+      .select(
+        "id,mbid,title,release_date,primary_type,cover_art_url,last_synced_at,artist:artist_id(id,name)",
+        { count: "exact" }
+      )
+      .order("last_synced_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    handleDbError(error, "fetching latest albums for explore");
+    return { rows: data ?? [], total: count ?? 0 };
+  }
+
   async findById(id) {
     const { data, error } = await this.supabase
       .from("album")
