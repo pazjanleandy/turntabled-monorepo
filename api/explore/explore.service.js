@@ -15,6 +15,12 @@ function mapExploreAlbumItem(album) {
   };
 }
 
+function parseNumber(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export class ExploreService {
   constructor({ backlogRepository, albumRepository, artistRepository, queueService, musicBrainzClient }) {
     this.backlogRepository = backlogRepository;
@@ -35,6 +41,63 @@ export class ExploreService {
       total,
       hydrationPendingCount: 0,
       items: resultItems,
+    };
+  }
+
+  async getPopularAlbums(page, limit) {
+    const rows = await this.albumRepository.findPopularFromBacklog(page, limit);
+    const albumIds = rows
+      .map((row) => row?.album_id)
+      .filter((value) => typeof value === "string" && value.trim());
+
+    const uniqueAlbumIds = [...new Set(albumIds)];
+    const albums = await this.albumRepository.findByIds(uniqueAlbumIds);
+    const albumsById = new Map(albums.map((album) => [album.id, album]));
+
+    const items = rows.map((row, index) => {
+      const album = row?.album_id ? albumsById.get(row.album_id) : null;
+      const artist = album?.artist ?? null;
+      const logsCount = parseNumber(row?.logs_count) ?? 0;
+      const ratingsCount = parseNumber(row?.ratings_count) ?? 0;
+      const averageRating = parseNumber(row?.average_rating);
+
+      return {
+        rank: (page - 1) * limit + index + 1,
+        popularity: {
+          logCount: logsCount,
+          ratingsCount,
+          averageRating: ratingsCount > 0 ? averageRating : null,
+        },
+        album: {
+          id: album?.id ?? row?.album_id ?? null,
+          title: album?.title ?? row?.album_title_raw ?? null,
+          titleRaw: row?.album_title_raw ?? album?.title ?? null,
+          normalizedTitle: album?.normalized_title ?? null,
+          releaseDate: album?.release_date ?? null,
+          primaryType: album?.primary_type ?? null,
+          coverArtUrl: album?.cover_art_url ?? null,
+          updatedAt: album?.updated_at ?? null,
+        },
+        artist: {
+          id: artist?.id ?? null,
+          name: artist?.name ?? row?.artist_name_raw ?? null,
+          nameRaw: row?.artist_name_raw ?? artist?.name ?? null,
+          normalizedName: artist?.normalized_name ?? null,
+          updatedAt: artist?.updated_at ?? null,
+        },
+        timestamps: {
+          lastLoggedAt: row?.last_logged_at ?? null,
+          lastBacklogUpdatedAt: row?.last_backlog_updated_at ?? null,
+        },
+      };
+    });
+
+    return {
+      page,
+      limit,
+      scope: "popular-albums",
+      rankedBy: ["logCount:desc", "averageRating:desc"],
+      items,
     };
   }
 

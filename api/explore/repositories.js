@@ -197,4 +197,111 @@ export class AlbumRepository {
     handleDbError(error, "upserting album");
     return data;
   }
+
+  async findByIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("album")
+      .select(
+        "id,title,normalized_title,release_date,primary_type,cover_art_url,updated_at,artist:artist_id(id,name,normalized_name,updated_at)"
+      )
+      .in("id", ids);
+
+    handleDbError(error, "fetching albums by ids");
+    return data ?? [];
+  }
+
+  async findPopularFromBacklog(page, limit) {
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select("album_id,user_id,artist_name_raw,album_title_raw,rating,added_at,updated_at")
+      .not("album_id", "is", null);
+
+    handleDbError(error, "aggregating popular albums from backlog");
+
+    const rows = Array.isArray(data) ? data : [];
+    const groupedMap = new Map();
+
+    for (const row of rows) {
+      const albumId = row?.album_id;
+      if (!albumId) continue;
+
+      let entry = groupedMap.get(albumId);
+      if (!entry) {
+        entry = {
+          album_id: albumId,
+          album_title_raw: row?.album_title_raw ?? null,
+          artist_name_raw: row?.artist_name_raw ?? null,
+          ratings_count: 0,
+          ratings_sum: 0,
+          last_logged_at: row?.added_at ?? null,
+          last_backlog_updated_at: row?.updated_at ?? null,
+          unique_users: new Set(),
+        };
+        groupedMap.set(albumId, entry);
+      }
+
+      if (typeof row?.user_id === "string" && row.user_id.trim()) {
+        entry.unique_users.add(row.user_id);
+      }
+      if (typeof row?.rating === "number") {
+        entry.ratings_count += 1;
+        entry.ratings_sum += row.rating;
+      }
+      if (!entry.album_title_raw && row?.album_title_raw) {
+        entry.album_title_raw = row.album_title_raw;
+      }
+      if (!entry.artist_name_raw && row?.artist_name_raw) {
+        entry.artist_name_raw = row.artist_name_raw;
+      }
+
+      const loggedAtCurrent = Date.parse(entry.last_logged_at ?? "") || 0;
+      const loggedAtNext = Date.parse(row?.added_at ?? "") || 0;
+      if (loggedAtNext > loggedAtCurrent) {
+        entry.last_logged_at = row?.added_at ?? entry.last_logged_at;
+      }
+
+      const updatedAtCurrent = Date.parse(entry.last_backlog_updated_at ?? "") || 0;
+      const updatedAtNext = Date.parse(row?.updated_at ?? "") || 0;
+      if (updatedAtNext > updatedAtCurrent) {
+        entry.last_backlog_updated_at = row?.updated_at ?? entry.last_backlog_updated_at;
+      }
+    }
+
+    const grouped = Array.from(groupedMap.values()).map((entry) => {
+      const logsCount = entry.unique_users.size;
+      const averageRating =
+        entry.ratings_count > 0 ? Number((entry.ratings_sum / entry.ratings_count).toFixed(4)) : null;
+      return {
+        album_id: entry.album_id,
+        album_title_raw: entry.album_title_raw,
+        artist_name_raw: entry.artist_name_raw,
+        logs_count: logsCount,
+        ratings_count: entry.ratings_count,
+        average_rating: averageRating,
+        last_logged_at: entry.last_logged_at,
+        last_backlog_updated_at: entry.last_backlog_updated_at,
+      };
+    });
+
+    grouped.sort((a, b) => {
+      const logsA = Number(a?.logs_count ?? 0);
+      const logsB = Number(b?.logs_count ?? 0);
+      if (logsB !== logsA) return logsB - logsA;
+
+      const avgA = a?.average_rating == null ? Number.NEGATIVE_INFINITY : Number(a.average_rating);
+      const avgB = b?.average_rating == null ? Number.NEGATIVE_INFINITY : Number(b.average_rating);
+      if (avgB !== avgA) return avgB - avgA;
+
+      const updatedA = Date.parse(a?.last_backlog_updated_at ?? "") || 0;
+      const updatedB = Date.parse(b?.last_backlog_updated_at ?? "") || 0;
+      return updatedB - updatedA;
+    });
+
+    return grouped.slice(from, to + 1);
+  }
 }

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import PopularAlbumsSection from '../components/PopularAlbumsSection.jsx'
@@ -7,49 +7,6 @@ import RecentlyListenedSection from '../components/RecentlyListenedSection.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import Footer from '../components/Footer.jsx'
 import { ChatCircle, Headphones, Heart, PlusCircle, UserPlus } from 'phosphor-react'
-
-const trendingAlbums = [
-  {
-    artist: 'Daft Punk',
-    album: 'Random Access Memories',
-    year: 2013,
-    tone: '28 70% 60%',
-    cover: '/album/ram.jpg',
-    listens: '1.3M',
-    saves: '312K',
-    ratings: '4.7',
-  },
-  {
-    artist: 'Tame Impala',
-    album: 'Currents',
-    year: 2015,
-    tone: '265 55% 60%',
-    cover: '/album/currents.jpg',
-    listens: '988K',
-    saves: '221K',
-    ratings: '4.6',
-  },
-  {
-    artist: 'Kendrick Lamar',
-    album: 'To Pimp a Butterfly',
-    year: 2015,
-    tone: '210 35% 52%',
-    cover: '/album/tpab.jpg',
-    listens: '1.1M',
-    saves: '289K',
-    ratings: '4.8',
-  },
-  {
-    artist: 'Frank Ocean',
-    album: 'Blonde',
-    year: 2016,
-    tone: '30 65% 70%',
-    cover: '/album/blond.jpg',
-    listens: '1.6M',
-    saves: '410K',
-    ratings: '4.9',
-  },
-]
 
 const stats = [
   { label: 'Listened', value: '32' },
@@ -182,16 +139,65 @@ const userActivity = [
 
 export default function Home() {
   const [search, setSearch] = useState('')
+  const [popularAlbums, setPopularAlbums] = useState([])
+  const [isPopularLoading, setIsPopularLoading] = useState(false)
+  const [popularError, setPopularError] = useState('')
 
-  const filteredTrending = useMemo(() => {
-    if (!search.trim()) return trendingAlbums
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
+    async function loadPopularAlbums() {
+      setIsPopularLoading(true)
+      setPopularError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const response = await fetch(`${apiBase}/api/explore/popular?page=1&limit=20`, {
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to load popular albums.')
+        }
+
+        const payload = await response.json()
+        const items = Array.isArray(payload?.items) ? payload.items : []
+
+        if (!cancelled) {
+          setPopularAlbums(items)
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        if (!cancelled) {
+          setPopularError(error?.message ?? 'Unable to load popular albums.')
+          setPopularAlbums([])
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPopularLoading(false)
+        }
+      }
+    }
+
+    loadPopularAlbums()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [])
+
+  const filteredPopular = useMemo(() => {
+    if (!search.trim()) return popularAlbums
+
     const term = search.toLowerCase()
-    return trendingAlbums.filter(
-      (item) =>
-        item.artist.toLowerCase().includes(term) ||
-        item.album.toLowerCase().includes(term),
-    )
-  }, [search])
+    return popularAlbums.filter((item) => {
+      const artistName = item?.artist?.name ?? item?.artist?.nameRaw ?? ''
+      const albumTitle = item?.album?.title ?? item?.album?.titleRaw ?? ''
+      return artistName.toLowerCase().includes(term) || albumTitle.toLowerCase().includes(term)
+    })
+  }, [popularAlbums, search])
 
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
@@ -202,9 +208,11 @@ export default function Home() {
         <main className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr]">
           <div className="min-w-0 space-y-8">
             <PopularAlbumsSection
-              albums={filteredTrending}
+              albums={filteredPopular}
               search={search}
               onSearchChange={setSearch}
+              isLoading={isPopularLoading}
+              error={popularError}
             />
             <RecentlyListenedSection albums={recentlyListenedAlbums} />
           </div>

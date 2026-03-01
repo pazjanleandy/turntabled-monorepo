@@ -10,6 +10,10 @@
   - Returns global album catalog from cached `album` table (`scope: catalog`).
   - This endpoint is read-only discovery and is not tied to user backlog data.
   - Backlog remains a separate module/flow.
+- `GET /api/explore/popular?page=1&limit=20`
+  - Returns popular albums ranked from `backlog` only (`scope: popular-albums`).
+  - Ranking: `logCount DESC`, then `averageRating DESC` (null ratings handled as no rating).
+  - Includes aggregated stats plus album/artist metadata for frontend consumption.
 - `POST /api/internal/musicbrainz-worker`
   - Auth: `Authorization: Bearer <EXPLORE_WORKER_SECRET>` or `x-worker-secret`.
   - Processes queued MusicBrainz hydration jobs with strict global 1 request/second gate.
