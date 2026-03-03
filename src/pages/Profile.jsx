@@ -25,10 +25,54 @@ import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+import {
+  PROFILE_EVENT_NAME,
+  fetchCurrentProfile,
+  readCachedProfile,
+} from '../lib/profileClient.js'
+
+function mapApiProfileToViewModel(profilePayload, fallbackUser) {
+  const apiUser = profilePayload?.user ?? {}
+  const normalizedUsername =
+    typeof apiUser.username === 'string' && apiUser.username.trim()
+      ? apiUser.username.trim()
+      : ''
+  const fullName = apiUser.fullName?.trim() || normalizedUsername || fallbackUser.name
+  const handle = apiUser.username ? `@${String(apiUser.username).replace(/^@/, '')}` : fallbackUser.handle
+
+  const initials =
+    fullName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || fallbackUser.initials
+
+  return {
+    user: {
+      ...fallbackUser,
+      name: fullName,
+      handle,
+      initials,
+      bio: apiUser.bio ?? fallbackUser.bio,
+    },
+    avatarUrl: apiUser.avatarUrl ?? '',
+  }
+}
 
 export default function Profile() {
   const { isSignedIn } = useAuthStatus()
-  const user = profileUser
+  const cachedProfile = readCachedProfile()
+  const [profileView, setProfileView] = useState(() => ({
+    user: {
+      ...profileUser,
+      name: cachedProfile?.fullName || cachedProfile?.username || profileUser.name,
+      handle: cachedProfile?.username ? `@${cachedProfile.username}` : profileUser.handle,
+      bio: cachedProfile?.bio || profileUser.bio,
+    },
+    avatarUrl: cachedProfile?.avatarUrl || '',
+  }))
+  const user = profileView.user
   const favorites = favoriteAlbums
   const recentCarousel = recentCarouselAlbums
   const recent = recentLogs
@@ -107,6 +151,69 @@ export default function Profile() {
   }, [isSignedIn])
 
   useEffect(() => {
+    if (!isSignedIn) {
+      setProfileView({ user: profileUser, avatarUrl: '' })
+      return
+    }
+
+    let cancelled = false
+
+    async function loadProfile() {
+      try {
+        const [clientProfile, apiPayload] = await Promise.all([
+          fetchCurrentProfile().catch(() => null),
+          (async () => {
+            const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+            const authHeaders = await buildApiAuthHeaders()
+            const response = await fetch(`${apiBase}/api/profile`, { headers: authHeaders })
+            const payload = await response.json().catch(() => null)
+            if (!response.ok) return null
+            return payload
+          })(),
+        ])
+
+        const payload = apiPayload ?? {}
+        if (clientProfile) {
+          payload.user = payload.user ?? {}
+          payload.user.username = payload.user.username || clientProfile.username
+          payload.user.fullName = payload.user.fullName || clientProfile.fullName
+          payload.user.bio = payload.user.bio ?? clientProfile.bio
+          payload.user.avatarUrl = clientProfile.avatarUrl
+        }
+
+        if (!cancelled) {
+          setProfileView(mapApiProfileToViewModel(payload, profileUser))
+        }
+      } catch {
+        if (!cancelled) {
+          setProfileView({ user: profileUser, avatarUrl: '' })
+        }
+      }
+    }
+
+    const handleProfileUpdate = (event) => {
+      const profile = event?.detail
+      if (!profile || cancelled) return
+      const payload = {
+        user: {
+          username: profile.username,
+          fullName: profile.fullName,
+          bio: profile.bio,
+          avatarUrl: profile.avatarUrl,
+        },
+      }
+      setProfileView(mapApiProfileToViewModel(payload, profileUser))
+    }
+
+    window.addEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
+    loadProfile()
+    return () => {
+      cancelled = true
+      window.removeEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
+    }
+  }, [isSignedIn])
+
+  useEffect(() => {
     if (!lastfmUsername) {
       setRecentTracks([])
       setTracksStatus({ loading: false, error: '' })
@@ -180,6 +287,10 @@ export default function Profile() {
     setLastfmUsername('')
   }
 
+  const handleProfileSaved = (payload) => {
+    setProfileView(mapApiProfileToViewModel(payload, profileUser))
+  }
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
@@ -189,7 +300,12 @@ export default function Profile() {
           <main className="overflow-hidden rounded-3xl border border-black/5 bg-white/60 backdrop-blur-md shadow-sm">
             <div className="divide-y divide-black/5">
               <section className="py-0">
-                <ProfileHeader embedded user={user} onEdit={() => setIsEditOpen(true)} />
+                <ProfileHeader
+                  embedded
+                  user={user}
+                  avatarSrc={profileView.avatarUrl || '/profile/rainy.jpg'}
+                  onEdit={() => setIsEditOpen(true)}
+                />
               </section>
 
               <section className="px-6 py-6 sm:px-8">
@@ -319,6 +435,7 @@ export default function Profile() {
         favoriteCovers={favoriteCovers}
         onClose={closeEditModal}
         onReplaceFavorite={setReplaceFavoriteIndex}
+        onSaved={handleProfileSaved}
       />
 
       <ReplaceFavoriteModal

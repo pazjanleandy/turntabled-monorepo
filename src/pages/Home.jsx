@@ -7,75 +7,51 @@ import RecentlyListenedSection from '../components/RecentlyListenedSection.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import Footer from '../components/Footer.jsx'
 import { ChatCircle, Headphones, Heart, PlusCircle, UserPlus } from 'phosphor-react'
+import useAuthStatus from '../hooks/useAuthStatus.js'
+import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
-const stats = [
-  { label: 'Listened', value: '32' },
-  { label: 'Backlog', value: '7' },
-  { label: 'Logs', value: '18' },
-]
+const LOG_STATUSES = new Set(['completed', 'favorite'])
+const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'pending'])
 
-const recentlyListenedAlbums = [
-  {
-    artist: 'Lana Del Rey',
-    album: 'Norman F. Rockwell!',
-    year: 2019,
-    cover: '/album/ram.jpg',
-    listens: '412K',
-    saves: '88K',
-    ratings: '4.6',
-    rating: 4.5,
-  },
-  {
-    artist: 'Tyler, The Creator',
-    album: 'IGOR',
-    year: 2019,
-    cover: '/album/igor.jpg',
-    listens: '519K',
-    saves: '120K',
-    ratings: '4.7',
-    rating: 4.0,
-  },
-  {
-    artist: 'Erykah Badu',
-    album: "Mama's Gun",
-    year: 2000,
-    cover: '/album/tpab.jpg',
-    listens: '210K',
-    saves: '52K',
-    ratings: '4.4',
-    rating: 4.5,
-  },
-  {
-    artist: 'Arctic Monkeys',
-    album: 'AM',
-    year: 2013,
-    cover: '/album/am.jpg',
-    listens: '622K',
-    saves: '158K',
-    ratings: '4.5',
-    rating: 3.5,
-  },
-  {
-    artist: 'Rosalia',
-    album: 'MOTOMAMI',
-    year: 2022,
-    cover: '/album/blond.jpg',
-    listens: '288K',
-    saves: '71K',
-    ratings: '4.2',
-    rating: 4.0,
-  },
-  {
-    artist: 'Bon Iver',
-    album: 'i,i',
-    year: 2019,
-    cover: '/album/i,i.jpg',
-    listens: '205K',
-    saves: '49K',
-    ratings: '4.3',
-    rating: 3.5,
-  },
-]
+function formatRelativeTime(value) {
+  if (!value) return 'just now'
+  const now = Date.now()
+  const then = new Date(value).getTime()
+  if (Number.isNaN(then)) return 'just now'
+
+  const diffMs = Math.max(0, now - then)
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+  const week = 7 * day
+  const month = 30 * day
+  const year = 365 * day
+
+  if (diffMs < minute) return 'just now'
+  if (diffMs < hour) {
+    const n = Math.floor(diffMs / minute)
+    return `${n} min${n === 1 ? '' : 's'} ago`
+  }
+  if (diffMs < day) {
+    const n = Math.floor(diffMs / hour)
+    return `${n}h ago`
+  }
+  if (diffMs < week) {
+    const n = Math.floor(diffMs / day)
+    return `${n} day${n === 1 ? '' : 's'} ago`
+  }
+  if (diffMs < month) {
+    const n = Math.floor(diffMs / week)
+    return `${n} week${n === 1 ? '' : 's'} ago`
+  }
+  if (diffMs < year) {
+    const n = Math.floor(diffMs / month)
+    return `${n} month${n === 1 ? '' : 's'} ago`
+  }
+
+  const n = Math.floor(diffMs / year)
+  return `${n} year${n === 1 ? '' : 's'} ago`
+}
 
 const recentActivity = [
   {
@@ -114,34 +90,17 @@ const recentActivity = [
   },
 ]
 
-const userActivity = [
-  {
-    id: 'you-1',
-    icon: <Headphones size={16} weight="bold" />,
-    text: 'You listened to Currents',
-    meta: 'Tame Impala - 20 min ago',
-    cover: '/album/currents.jpg',
-  },
-  {
-    id: 'you-2',
-    icon: <ChatCircle size={16} weight="bold" />,
-    text: 'You logged a review',
-    meta: 'Jubilee - 1h ago',
-    cover: '/album/i,i.jpg',
-  },
-  {
-    id: 'you-3',
-    icon: <UserPlus size={16} weight="bold" />,
-    text: 'You followed Alex M.',
-    meta: 'Alt + R&B picks',
-  },
-]
-
 export default function Home() {
+  const { isSignedIn } = useAuthStatus()
   const [search, setSearch] = useState('')
   const [popularAlbums, setPopularAlbums] = useState([])
   const [isPopularLoading, setIsPopularLoading] = useState(false)
   const [popularError, setPopularError] = useState('')
+  const [recentlyListened, setRecentlyListened] = useState([])
+  const [backlogStats, setBacklogStats] = useState({ listened: 0, backlog: 0, logs: 0 })
+  const [userActivity, setUserActivity] = useState([])
+  const [isRecentLoading, setIsRecentLoading] = useState(false)
+  const [recentError, setRecentError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -188,6 +147,114 @@ export default function Home() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isSignedIn) {
+      setRecentlyListened([])
+      setBacklogStats({ listened: 0, backlog: 0, logs: 0 })
+      setUserActivity([])
+      setRecentError('')
+      setIsRecentLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    async function loadRecentlyListened() {
+      setIsRecentLoading(true)
+      setRecentError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const authHeaders = await buildApiAuthHeaders()
+        const limit = 50
+        let page = 1
+        let total = 0
+        let allItems = []
+
+        while (!cancelled) {
+          const response = await fetch(`${apiBase}/api/backlog?page=${page}&limit=${limit}`, {
+            headers: authHeaders,
+            signal: controller.signal,
+          })
+          const payload = await response.json().catch(() => null)
+
+          if (!response.ok) {
+            throw new Error(payload?.error?.message ?? 'Failed to load recently listened.')
+          }
+
+          const items = Array.isArray(payload?.items) ? payload.items : []
+          total = Number(payload?.total ?? 0)
+          allItems = allItems.concat(items)
+
+          if (items.length === 0 || allItems.length >= total) break
+          page += 1
+        }
+
+        const mapped = allItems.map((item) => ({
+          id: item.id,
+          artist: item.artistNameRaw ?? 'Unknown Artist',
+          album: item.albumTitleRaw ?? 'Unknown Album',
+          cover: item.coverArtUrl || '/album/am.jpg',
+          rating: item.rating ?? 0,
+          status: item.status ?? 'pending',
+          addedAt: item.addedAt ?? null,
+        }))
+
+        const logsCount = mapped.reduce(
+          (sum, item) => sum + (LOG_STATUSES.has(item.status) ? 1 : 0),
+          0,
+        )
+        const backlogCount = mapped.reduce(
+          (sum, item) => sum + (BACKLOG_STATUSES.has(item.status) ? 1 : 0),
+          0,
+        )
+        const activity = mapped.slice(0, 3).map((item) => {
+          const isLog = LOG_STATUSES.has(item.status)
+          return {
+            id: `you-${item.id}`,
+            icon: isLog ? (
+              <Headphones size={16} weight="bold" />
+            ) : (
+              <PlusCircle size={16} weight="bold" />
+            ),
+            text: isLog ? `You logged ${item.album}` : `You added ${item.album} to backlog`,
+            meta: `${item.artist} - ${formatRelativeTime(item.addedAt)}`,
+            cover: item.cover,
+          }
+        })
+
+        if (!cancelled) {
+          setRecentlyListened(mapped)
+          setBacklogStats({
+            listened: mapped.length,
+            backlog: backlogCount,
+            logs: logsCount,
+          })
+          setUserActivity(activity)
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        if (!cancelled) {
+          setRecentlyListened([])
+          setBacklogStats({ listened: 0, backlog: 0, logs: 0 })
+          setUserActivity([])
+          setRecentError(error?.message ?? 'Unable to load recently listened.')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsRecentLoading(false)
+        }
+      }
+    }
+
+    loadRecentlyListened()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [isSignedIn])
+
   const filteredPopular = useMemo(() => {
     if (!search.trim()) return popularAlbums
 
@@ -198,6 +265,15 @@ export default function Home() {
       return artistName.toLowerCase().includes(term) || albumTitle.toLowerCase().includes(term)
     })
   }, [popularAlbums, search])
+
+  const stats = useMemo(
+    () => [
+      { label: 'Listened', value: String(backlogStats.listened) },
+      { label: 'Backlog', value: String(backlogStats.backlog) },
+      { label: 'Logs', value: String(backlogStats.logs) },
+    ],
+    [backlogStats],
+  )
 
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
@@ -214,7 +290,12 @@ export default function Home() {
               isLoading={isPopularLoading}
               error={popularError}
             />
-            <RecentlyListenedSection albums={recentlyListenedAlbums} />
+            <RecentlyListenedSection
+              albums={recentlyListened}
+              isLoading={isRecentLoading}
+              error={recentError}
+              isSignedIn={isSignedIn}
+            />
           </div>
           <StatsPanel stats={stats} userActivity={userActivity} />
         </main>

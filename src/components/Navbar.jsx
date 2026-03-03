@@ -1,14 +1,64 @@
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { BookOpen, Compass, House, MusicNotes, SignOut } from 'phosphor-react'
 import useAuthStatus from '../hooks/useAuthStatus.js'
+import {
+  PROFILE_EVENT_NAME,
+  fetchCurrentProfile,
+  readCachedProfile,
+  writeCachedProfile,
+} from '../lib/profileClient.js'
 
 export default function Navbar({ className = '' }) {
   const navigate = useNavigate()
-  const { signOut } = useAuthStatus()
+  const { signOut, isSignedIn } = useAuthStatus()
+  const [navUser, setNavUser] = useState(() => {
+    const cached = readCachedProfile()
+    return {
+      username: cached?.username || '',
+      avatarUrl: cached?.avatarUrl || '/profile/rainy.jpg',
+    }
+  })
+
+  useEffect(() => {
+    if (!isSignedIn) return
+
+    let cancelled = false
+
+    async function loadNavUser() {
+      try {
+        const profile = await fetchCurrentProfile()
+        if (!cancelled) {
+          writeCachedProfile(profile)
+          setNavUser({ username: profile.username, avatarUrl: profile.avatarUrl })
+        }
+      } catch {
+        // Keep cached value on fetch failure.
+      }
+    }
+
+    const handleProfileUpdate = (event) => {
+      const profile = event?.detail
+      if (!profile) return
+      setNavUser({
+        username: profile.username || '',
+        avatarUrl: profile.avatarUrl || '/profile/rainy.jpg',
+      })
+    }
+
+    window.addEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
+    loadNavUser()
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
+    }
+  }, [isSignedIn])
 
   const handleSignOut = (event) => {
     event.preventDefault()
     signOut()
+    setNavUser({ username: '', avatarUrl: '/profile/rainy.jpg' })
     navigate('/')
   }
 
@@ -60,11 +110,11 @@ export default function Navbar({ className = '' }) {
           }
         >
           <img
-            src="/profile/rainy.jpg"
-            alt="user1 avatar"
+            src={navUser.avatarUrl}
+            alt={`${navUser.username || 'User'} avatar`}
             className="h-8 w-8 rounded-full object-cover transition duration-200 group-hover:scale-105"
           />
-          user1
+          {navUser.username || ' '}
         </NavLink>
 
         <div className="pointer-events-none absolute right-0 top-full z-40 w-48 translate-y-1 pt-2 opacity-0 transition duration-200 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">

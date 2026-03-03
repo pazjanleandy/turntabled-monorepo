@@ -1,5 +1,13 @@
+import { useEffect, useMemo, useState } from 'react'
 import { X } from 'phosphor-react'
 import CoverImage from '../CoverImage.jsx'
+import { buildApiAuthHeaders } from '../../lib/apiAuth.js'
+import {
+  emitProfileUpdated,
+  fetchCurrentProfile,
+  uploadAvatarAndPersistPath,
+  validateAvatarFile,
+} from '../../lib/profileClient.js'
 
 export default function EditProfileModal({
   isOpen,
@@ -8,7 +16,116 @@ export default function EditProfileModal({
   favoriteCovers,
   onClose,
   onReplaceFavorite,
+  onSaved,
 }) {
+  const [name, setName] = useState(user?.name ?? '')
+  const [bio, setBio] = useState(user?.bio ?? '')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+
+  useEffect(() => {
+    if (!isOpen) return
+    setName(user?.name ?? '')
+    setBio(user?.bio ?? '')
+    setSelectedFile(null)
+    setErrorMessage('')
+    setSuccessMessage('')
+  }, [isOpen, user?.name, user?.bio])
+
+  const hasPendingChanges = useMemo(() => {
+    return name.trim() !== (user?.name ?? '') || bio.trim() !== (user?.bio ?? '') || Boolean(selectedFile)
+  }, [name, bio, selectedFile, user?.name, user?.bio])
+
+  const handleFileChange = (event) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    const nextFile = event.target.files?.[0] ?? null
+    if (!nextFile) {
+      setSelectedFile(null)
+      return
+    }
+
+    const validation = validateAvatarFile(nextFile)
+    if (!validation.valid) {
+      setSelectedFile(null)
+      setErrorMessage(validation.message)
+      return
+    }
+
+    setSelectedFile(nextFile)
+  }
+
+  const handleSaveChanges = async () => {
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    if (!hasPendingChanges) {
+      setErrorMessage('No changes to save.')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      let latestAvatarProfile = null
+      if (selectedFile) {
+        latestAvatarProfile = await uploadAvatarAndPersistPath(selectedFile)
+      }
+
+      const shouldPatchProfileText = name.trim() !== (user?.name ?? '') || bio.trim() !== (user?.bio ?? '')
+      let result = null
+
+      if (shouldPatchProfileText) {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const authHeaders = await buildApiAuthHeaders()
+        const response = await fetch(`${apiBase}/api/profile`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders,
+          },
+          body: JSON.stringify({
+            fullName: name.trim(),
+            bio: bio.trim(),
+          }),
+        })
+
+        result = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(result?.error?.message ?? 'Failed to save profile changes.')
+        }
+      }
+
+      // Always sync avatar/profile snapshot after save so text-only updates
+      // never overwrite the currently uploaded avatar in UI state.
+      const syncedProfile = latestAvatarProfile ?? (await fetchCurrentProfile().catch(() => null))
+      if (syncedProfile) {
+        emitProfileUpdated(syncedProfile)
+      }
+
+      if (result || syncedProfile) {
+        const payload = result ?? { user: {} }
+        payload.user = payload.user ?? {}
+        if (syncedProfile) {
+          payload.user.username = payload.user.username || syncedProfile.username
+          payload.user.fullName = payload.user.fullName || syncedProfile.fullName
+          payload.user.bio = payload.user.bio ?? syncedProfile.bio
+          payload.user.avatarUrl = syncedProfile.avatarUrl
+        }
+        onSaved?.(payload)
+      }
+
+      setSuccessMessage('Profile updated successfully.')
+      onClose?.()
+    } catch (error) {
+      setErrorMessage(error?.message ?? 'Unexpected error while saving changes.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -43,7 +160,8 @@ export default function EditProfileModal({
             Change name
             <input
               type="text"
-              defaultValue={user.name}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
               className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             />
           </label>
@@ -51,7 +169,8 @@ export default function EditProfileModal({
           <label className="space-y-2 text-sm font-semibold text-text">
             Change bio
             <textarea
-              defaultValue={user.bio}
+              value={bio}
+              onChange={(event) => setBio(event.target.value)}
               rows={3}
               className="w-full resize-none rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             />
@@ -61,10 +180,23 @@ export default function EditProfileModal({
             Change image
             <input
               type="file"
-              accept="image/*"
+              accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+              onChange={handleFileChange}
               className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             />
+            {selectedFile ? (
+              <p className="mb-0 text-xs text-slate-600">Selected: {selectedFile.name}</p>
+            ) : (
+              <p className="mb-0 text-xs text-slate-500">Supported formats: PNG or JPEG, up to 2MB.</p>
+            )}
           </label>
+
+          {errorMessage ? (
+            <p className="mb-0 text-xs font-semibold text-red-600">{errorMessage}</p>
+          ) : null}
+          {successMessage ? (
+            <p className="mb-0 text-xs font-semibold text-emerald-700">{successMessage}</p>
+          ) : null}
 
           <div>
             <div className="flex items-center justify-between gap-3">
@@ -114,10 +246,18 @@ export default function EditProfileModal({
           <button
             className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
             onClick={onClose}
+            disabled={isSaving}
           >
             Cancel
           </button>
-          <button className="btn-primary px-4 py-2 text-sm">Save changes</button>
+          <button
+            type="button"
+            className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleSaveChanges}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving changes...' : 'Save changes'}
+          </button>
         </div>
       </div>
     </div>
