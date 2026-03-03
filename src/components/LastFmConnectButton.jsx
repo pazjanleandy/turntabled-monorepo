@@ -15,7 +15,7 @@ export default function LastFmConnectButton({ className = "" }) {
   return (
     <button
       type="button"
-      className={`btn-primary px-4 py-2 text-sm ${className}`}
+      className={`btn-primary rounded-xl border border-orange-500/30 px-4 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 ${className}`}
       onClick={handleConnect}
       disabled={!apiKey}
       title={apiKey ? "Connect Last.fm" : "Missing VITE_LASTFM_API_KEY"}

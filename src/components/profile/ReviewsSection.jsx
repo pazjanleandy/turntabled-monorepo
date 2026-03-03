@@ -6,18 +6,21 @@ const TABS = [
   { id: 'drafts', label: 'Drafts' },
 ]
 
-export default function ReviewsSection({ reviews = [], drafts = [] }) {
+export default function ReviewsSection({ reviews = [], drafts = [], asCard = true }) {
   const [activeTab, setActiveTab] = useState('all')
   const items = activeTab === 'all' ? reviews : drafts
+  const sectionClass = asCard
+    ? 'card vinyl-texture border border-black/5 shadow-sm'
+    : 'space-y-4'
 
   return (
-    <section className="border-t border-black/10 pt-6">
+    <section className={sectionClass}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
             Reviews
           </p>
-          <h2 className="mb-0 text-xl">Your write-ups</h2>
+          <h2 className="mb-0 text-lg text-text">Your write-ups</h2>
         </div>
         <div className="flex items-center gap-2">
           {TABS.map((tab) => {
@@ -28,10 +31,10 @@ export default function ReviewsSection({ reviews = [], drafts = [] }) {
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={[
-                  'rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] transition',
+                  'rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2',
                   isActive
                     ? 'border-accent/40 bg-accent/15 text-accent'
-                    : 'border-black/10 bg-white/70 text-muted hover:text-text',
+                    : 'border-black/10 bg-white/60 text-slate-600 hover:text-text',
                 ].join(' ')}
               >
                 {tab.label}
@@ -44,10 +47,10 @@ export default function ReviewsSection({ reviews = [], drafts = [] }) {
       <div className="mt-4 space-y-3">
         {items.length ? (
           items.map((review) => (
-            <ReviewRow key={`${review.title}-${review.artist}`} {...review} />
+            <ReviewRow key={`${review.title}-${review.artist}`} {...review} elevated={asCard} />
           ))
         ) : (
-          <p className="mb-0 text-sm text-muted">
+          <p className="mb-0 text-sm text-slate-600">
             No reviews to show yet. Start writing to build your collection.
           </p>
         )}

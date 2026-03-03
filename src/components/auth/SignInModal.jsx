@@ -123,51 +123,53 @@ export default function SignInModal({ isOpen, onClose, anchorTop, onSignIn }) {
               <X size={14} weight="bold" />
             </button>
 
-            <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={handleSubmit}>
-              <label className="flex-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-                Email or username
-                <input
-                  type="text"
-                  placeholder="you@email.com or username"
-                  value={identifier}
-                  onChange={(event) => setIdentifier(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm font-medium text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-                />
-              </label>
+            <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="flex-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+                  Email or username
+                  <input
+                    type="text"
+                    placeholder="you@email.com or username"
+                    value={identifier}
+                    onChange={(event) => setIdentifier(event.target.value)}
+                    className="mt-2 w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm font-medium text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+                  />
+                </label>
 
-              <label className="flex-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-                Password
-                <input
-                  type="password"
-                  placeholder="********"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm font-medium text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-                />
-              </label>
+                <label className="flex-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+                  Password
+                  <input
+                    type="password"
+                    placeholder="********"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="mt-2 w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm font-medium text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+                  />
+                </label>
 
-              <button
-                type="button"
-                className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent transition hover:text-[#ef6b2f]"
-                onClick={closeModal}
-              >
-                Forgotten?
-              </button>
+                <button
+                  type="button"
+                  className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent transition hover:text-[#ef6b2f]"
+                  onClick={closeModal}
+                >
+                  Forgotten?
+                </button>
 
-              <label className="flex items-center gap-2 text-[11px] font-semibold text-muted">
-                <input type="checkbox" className="h-4 w-4" />
-                Remember me
-              </label>
+                <label className="flex items-center gap-2 text-[11px] font-semibold text-muted">
+                  <input type="checkbox" className="h-4 w-4" />
+                  Remember me
+                </label>
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn-primary inline-flex items-center px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmitting ? 'Signing in...' : 'Sign in'}
-              </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-primary inline-flex items-center px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmitting ? 'Signing in...' : 'Sign in'}
+                </button>
+              </div>
               {errorMessage ? (
-                <p className="w-full text-xs font-semibold text-red-600" role="alert">
+                <p className="text-xs font-semibold text-red-600" role="alert">
                   {errorMessage}
                 </p>
               ) : null}

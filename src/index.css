@@ -297,13 +297,13 @@ body::before {
 
   .vinyl-texture {
     background-image:
-      radial-gradient(circle at 18% 22%, rgba(247, 121, 62, 0.06), transparent 45%),
+      radial-gradient(circle at 18% 22%, rgba(247, 121, 62, 0.035), transparent 48%),
       repeating-radial-gradient(
         circle at center,
-        rgba(15, 23, 42, 0.045) 0 0.6px,
-        transparent 0.6px 6px
+        rgba(15, 23, 42, 0.02) 0 0.5px,
+        transparent 0.5px 8px
       );
-    background-size: auto, 220px 220px;
+    background-size: auto, 260px 260px;
   }
 
   .hero-bleed {

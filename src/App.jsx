@@ -8,6 +8,7 @@ import Backlog from './pages/Backlog.jsx'
 import Favorites from './pages/Favorites.jsx'
 import Activity from './pages/Activity.jsx'
 import Friends from './pages/Friends.jsx'
+import FriendProfile from './pages/FriendProfile.jsx'
 import Artists from './pages/Artists.jsx'
 import LastFmCallbackPage from './pages/LastFmCallbackPage.jsx'
 import AlbumPage from './pages/AlbumPage.jsx'
@@ -25,6 +26,7 @@ function App() {
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/friends" element={<Friends />} />
+        <Route path="/friends/:friendSlug" element={<FriendProfile />} />
         <Route path="/album/:releaseId" element={<AlbumPage />} />
         <Route path="/auth/lastfm/callback" element={<LastFmCallbackPage />} />
         <Route path="/artist/:artistId" element={<ArtistProfile />} />
