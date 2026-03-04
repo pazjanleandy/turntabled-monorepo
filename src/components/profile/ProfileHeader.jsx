@@ -1,11 +1,13 @@
-import { useState } from 'react'
-import { Clock, Flame, Heart, PencilSimpleLine, ShareNetwork } from 'phosphor-react'
+import { useRef, useState } from 'react'
+import { Camera, Clock, Flame, Heart, PencilSimpleLine, ShareNetwork } from 'phosphor-react'
+import { validateCoverFile } from '../../lib/profileClient.js'
 
 export default function ProfileHeader({
   user,
   onEdit = () => {},
+  onCoverUpload = async () => {},
   primaryActionLabel = 'Edit profile',
-  avatarSrc = '/profile/rainy.jpg',
+  avatarSrc = '',
   avatarAlt,
   bannerSrc = '/hero/hero1.jpg',
   bannerAlt = 'Profile banner',
@@ -14,6 +16,11 @@ export default function ProfileHeader({
   const resolvedAvatarAlt = avatarAlt ?? `${user?.name ?? 'User'} avatar`
   const [failedAvatarSrc, setFailedAvatarSrc] = useState('')
   const [failedBannerSrc, setFailedBannerSrc] = useState('')
+  const [coverUploadState, setCoverUploadState] = useState({
+    loading: false,
+    error: '',
+  })
+  const coverFileInputRef = useRef(null)
 
   const avatarFailed = failedAvatarSrc === avatarSrc
   const bannerFailed = failedBannerSrc === bannerSrc
@@ -50,20 +57,79 @@ export default function ProfileHeader({
   const joinedDate = (user.joined ?? '').replace(/^Joined\s+/i, '')
   const bio = user.bio
 
+  const handleCoverEditClick = () => {
+    if (coverUploadState.loading) return
+    coverFileInputRef.current?.click()
+  }
+
+  const handleCoverFileChange = async (event) => {
+    const file = event.target.files?.[0] ?? null
+    event.target.value = ''
+    if (!file) return
+
+    const validation = validateCoverFile(file)
+    if (!validation.valid) {
+      setCoverUploadState({
+        loading: false,
+        error: validation.message,
+      })
+      return
+    }
+
+    setCoverUploadState({
+      loading: true,
+      error: '',
+    })
+
+    try {
+      await onCoverUpload(file)
+      setCoverUploadState({
+        loading: false,
+        error: '',
+      })
+    } catch (error) {
+      setCoverUploadState({
+        loading: false,
+        error: error?.message ?? 'Failed to upload cover photo.',
+      })
+    }
+  }
+
   return (
     <section className={containerClass}>
-      <div className={coverWrapClass}>
+      <div className={`${coverWrapClass} group/cover`}>
         {!bannerFailed ? (
           <img
             src={bannerSrc}
             alt={bannerAlt}
-            className="h-full w-full rounded-t-3xl object-cover"
+            className="h-full w-full rounded-t-3xl object-cover transition duration-300 group-hover/cover:brightness-75"
             onError={() => setFailedBannerSrc(bannerSrc)}
           />
         ) : (
           <div className="h-full w-full rounded-t-3xl bg-gradient-to-r from-slate-200 via-white to-orange-100" />
         )}
-        <div className="pointer-events-none absolute inset-0 rounded-t-3xl bg-gradient-to-b from-black/0 via-black/0 to-black/20" />
+        <div className="pointer-events-none absolute inset-0 rounded-t-3xl bg-gradient-to-b from-black/0 via-black/0 to-black/20 transition duration-300 group-hover/cover:bg-black/25" />
+
+        <input
+          ref={coverFileInputRef}
+          type="file"
+          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+          className="hidden"
+          onChange={handleCoverFileChange}
+        />
+
+        <button
+          type="button"
+          onClick={handleCoverEditClick}
+          disabled={coverUploadState.loading}
+          className="absolute inset-0 z-20 flex items-center justify-center rounded-t-3xl bg-black/0 transition duration-300 hover:bg-black/35 focus-visible:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-70"
+          aria-label="Upload cover photo"
+        >
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/45 px-3 py-2 text-xs font-semibold text-white opacity-0 backdrop-blur-sm transition duration-300 group-hover/cover:opacity-100 focus-visible:opacity-100">
+            <Camera size={14} weight="bold" />
+            {coverUploadState.loading ? 'Uploading...' : 'Edit cover'}
+          </span>
+        </button>
 
         <div className="absolute bottom-0 left-4 z-20 translate-y-1/2 sm:left-8">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-accent/20 text-base font-semibold text-accent ring-4 ring-white shadow-md sm:h-24 sm:w-24 sm:text-lg">
@@ -80,6 +146,12 @@ export default function ProfileHeader({
           </div>
         </div>
       </div>
+
+      {coverUploadState.error ? (
+        <p className="mb-0 mt-2 px-6 text-xs font-semibold text-red-600 sm:px-8">
+          {coverUploadState.error}
+        </p>
+      ) : null}
 
       <div className={bodyClass}>
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-6">

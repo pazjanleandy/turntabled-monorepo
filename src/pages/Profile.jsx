@@ -10,18 +10,15 @@ import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
-import ReplaceFavoriteModal from '../components/profile/ReplaceFavoriteModal.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
 import {
-  favoriteAlbums,
   friends,
   profileUser,
   recentCarouselAlbums,
   recentLogs,
   reviews,
 } from '../data/profileData.js'
-import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
@@ -29,7 +26,20 @@ import {
   PROFILE_EVENT_NAME,
   fetchCurrentProfile,
   readCachedProfile,
+  uploadCoverAndPersistUrl,
 } from '../lib/profileClient.js'
+
+function mapApiFavoritesToAlbums(payload) {
+  const favorites = Array.isArray(payload?.favorites) ? payload.favorites : []
+  return favorites.map((item) => ({
+    backlogId: item?.backlogId ?? null,
+    title: item?.album?.title ?? 'Unknown album',
+    artist: item?.album?.artistName ?? 'Unknown artist',
+    cover: item?.album?.coverArtUrl || '',
+    releaseId: item?.album?.releaseId ?? null,
+    rating: item?.rating ?? 0,
+  }))
+}
 
 function mapApiProfileToViewModel(profilePayload, fallbackUser) {
   const apiUser = profilePayload?.user ?? {}
@@ -57,6 +67,7 @@ function mapApiProfileToViewModel(profilePayload, fallbackUser) {
       bio: apiUser.bio ?? fallbackUser.bio,
     },
     avatarUrl: apiUser.avatarUrl ?? '',
+    coverUrl: apiUser.coverUrl ?? '',
   }
 }
 
@@ -71,16 +82,17 @@ export default function Profile() {
       bio: cachedProfile?.bio || profileUser.bio,
     },
     avatarUrl: cachedProfile?.avatarUrl || '',
+    coverUrl: cachedProfile?.coverUrl || '',
   }))
   const user = profileView.user
-  const favorites = favoriteAlbums
+  const [profileFavorites, setProfileFavorites] = useState([])
+  const favorites = profileFavorites
   const recentCarousel = recentCarouselAlbums
   const recent = recentLogs
   const friendsList = friends
   const reviewList = reviews
 
   const [isEditOpen, setIsEditOpen] = useState(false)
-  const [replaceFavoriteIndex, setReplaceFavoriteIndex] = useState(null)
   const [lastfmUsername, setLastfmUsername] = useState(
     () => localStorage.getItem('lastfmUsername') ?? '',
   )
@@ -90,9 +102,11 @@ export default function Profile() {
     error: '',
   })
   const [backlogPreview, setBacklogPreview] = useState([])
+  const [loggedAlbumsForEdit, setLoggedAlbumsForEdit] = useState([])
   const [backlogLoading, setBacklogLoading] = useState(false)
 
-  const favoriteCovers = useAlbumCovers(favorites)
+  const favoriteCovers = {}
+  const editFavoriteCovers = {}
 
   const { ratings: favoriteRatings, updateRating: handleFavoriteRatingChange } =
     useAlbumRatings(favorites)
@@ -112,6 +126,8 @@ export default function Profile() {
   useEffect(() => {
     if (!isSignedIn) {
       setBacklogPreview([])
+      setLoggedAlbumsForEdit([])
+      setProfileFavorites([])
       return
     }
 
@@ -122,7 +138,7 @@ export default function Profile() {
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
         const authHeaders = await buildApiAuthHeaders()
-        const response = await fetch(`${apiBase}/api/backlog?page=1&limit=5`, {
+        const response = await fetch(`${apiBase}/api/backlog?page=1&limit=50`, {
           headers: authHeaders,
         })
         const payload = await response.json().catch(() => null)
@@ -130,12 +146,23 @@ export default function Profile() {
           throw new Error(payload?.error?.message ?? 'Failed to load backlog.')
         }
 
+        const items = Array.isArray(payload?.items) ? payload.items : []
         if (!cancelled) {
-          setBacklogPreview(Array.isArray(payload?.items) ? payload.items : [])
+          setBacklogPreview(items.slice(0, 5))
+          setLoggedAlbumsForEdit(
+            items.map((item) => ({
+              title: item?.albumTitleRaw ?? 'Unknown album',
+              artist: item?.artistNameRaw ?? 'Unknown artist',
+              cover: item?.coverArtUrl || '',
+              backlogId: item?.id ?? null,
+              isFavorite: Boolean(item?.isFavorite),
+            }))
+          )
         }
       } catch {
         if (!cancelled) {
           setBacklogPreview([])
+          setLoggedAlbumsForEdit([])
         }
       } finally {
         if (!cancelled) {
@@ -152,7 +179,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (!isSignedIn) {
-      setProfileView({ user: profileUser, avatarUrl: '' })
+      setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
       return
     }
 
@@ -173,12 +200,27 @@ export default function Profile() {
         ])
 
         const payload = apiPayload ?? {}
+        payload.user = payload.user ?? {}
+
+        if (apiPayload) {
+          setProfileFavorites(mapApiFavoritesToAlbums(apiPayload))
+        }
+
         if (clientProfile) {
-          payload.user = payload.user ?? {}
           payload.user.username = payload.user.username || clientProfile.username
           payload.user.fullName = payload.user.fullName || clientProfile.fullName
           payload.user.bio = payload.user.bio ?? clientProfile.bio
           payload.user.avatarUrl = clientProfile.avatarUrl
+          payload.user.coverUrl = clientProfile.coverUrl
+        } else {
+          const latestCached = readCachedProfile()
+          if (latestCached) {
+            payload.user.username = payload.user.username || latestCached.username
+            payload.user.fullName = payload.user.fullName || latestCached.fullName
+            payload.user.bio = payload.user.bio ?? latestCached.bio
+            payload.user.avatarUrl = payload.user.avatarUrl || latestCached.avatarUrl || ''
+            payload.user.coverUrl = payload.user.coverUrl || latestCached.coverUrl || ''
+          }
         }
 
         if (!cancelled) {
@@ -186,7 +228,7 @@ export default function Profile() {
         }
       } catch {
         if (!cancelled) {
-          setProfileView({ user: profileUser, avatarUrl: '' })
+          setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
         }
       }
     }
@@ -200,6 +242,7 @@ export default function Profile() {
           fullName: profile.fullName,
           bio: profile.bio,
           avatarUrl: profile.avatarUrl,
+          coverUrl: profile.coverUrl,
         },
       }
       setProfileView(mapApiProfileToViewModel(payload, profileUser))
@@ -278,7 +321,6 @@ export default function Profile() {
 
   const closeEditModal = () => {
     setIsEditOpen(false)
-    setReplaceFavoriteIndex(null)
   }
 
   const handleDisconnectLastFm = () => {
@@ -289,6 +331,55 @@ export default function Profile() {
 
   const handleProfileSaved = (payload) => {
     setProfileView(mapApiProfileToViewModel(payload, profileUser))
+    if (payload?.favorites) {
+      setProfileFavorites(mapApiFavoritesToAlbums(payload))
+    }
+  }
+
+  const handleCoverUpload = async (file) => {
+    const profile = await uploadCoverAndPersistUrl(file)
+    const payload = {
+      user: {
+        username: profile.username,
+        fullName: profile.fullName,
+        bio: profile.bio,
+        avatarUrl: profile.avatarUrl,
+        coverUrl: profile.coverUrl,
+      },
+    }
+    setProfileView(mapApiProfileToViewModel(payload, profileUser))
+  }
+
+  const handleSaveFavorites = async (favoriteBacklogIds) => {
+    const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+    const authHeaders = await buildApiAuthHeaders()
+    if (!authHeaders?.Authorization) {
+      throw new Error('You are not authenticated. Please sign in again.')
+    }
+
+    const response = await fetch(`${apiBase}/api/profile/favorites`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        favoriteBacklogIds: Array.isArray(favoriteBacklogIds) ? favoriteBacklogIds : [],
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(payload?.error?.message ?? `Failed to update favorite (HTTP ${response.status}).`)
+    }
+
+    setProfileFavorites(mapApiFavoritesToAlbums(payload))
+    setLoggedAlbumsForEdit((current) =>
+      current.map((item) => ({
+        ...item,
+        isFavorite: favoriteBacklogIds.includes(item.backlogId),
+      }))
+    )
+    return payload
   }
 
   return (
@@ -303,7 +394,9 @@ export default function Profile() {
                 <ProfileHeader
                   embedded
                   user={user}
-                  avatarSrc={profileView.avatarUrl || '/profile/rainy.jpg'}
+                  avatarSrc={profileView.avatarUrl || ''}
+                  bannerSrc={profileView.coverUrl || '/hero/hero1.jpg'}
+                  onCoverUpload={handleCoverUpload}
                   onEdit={() => setIsEditOpen(true)}
                 />
               </section>
@@ -431,16 +524,11 @@ export default function Profile() {
       <EditProfileModal
         isOpen={isEditOpen}
         user={user}
-        favorites={favorites}
-        favoriteCovers={favoriteCovers}
+        favorites={loggedAlbumsForEdit}
+        favoriteCovers={editFavoriteCovers}
         onClose={closeEditModal}
-        onReplaceFavorite={setReplaceFavoriteIndex}
+        onSaveFavorites={handleSaveFavorites}
         onSaved={handleProfileSaved}
-      />
-
-      <ReplaceFavoriteModal
-        index={replaceFavoriteIndex}
-        onClose={() => setReplaceFavoriteIndex(null)}
       />
     </div>
   )

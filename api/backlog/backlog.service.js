@@ -56,6 +56,7 @@ function mapItem(row) {
     albumTitleRaw: row.album_title_raw,
     status: row.status ?? "pending",
     rating: row.rating,
+    isFavorite: Boolean(row.is_favorite),
     addedAt: row.added_at,
     updatedAt: row.updated_at,
     coverArtUrl: row?.album?.cover_art_url ?? null,

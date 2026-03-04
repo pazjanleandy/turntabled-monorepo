@@ -5,6 +5,7 @@ export const PROFILE_CACHE_KEY = 'turntabled:profile-cache'
 
 const AVATAR_BUCKET = 'avatars'
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024
+const MAX_COVER_BYTES = 5 * 1024 * 1024
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg'])
 const ALLOWED_EXTENSIONS = new Set(['png', 'jpg', 'jpeg'])
 
@@ -24,9 +25,18 @@ function ensureLocalStorage() {
 }
 
 function buildAvatarUrl(avatarPath) {
-  if (!avatarPath) return '/profile/rainy.jpg'
-  const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(avatarPath)
-  return data?.publicUrl || '/profile/rainy.jpg'
+  if (typeof avatarPath !== 'string' || !avatarPath.trim()) return ''
+  const normalized = avatarPath.trim()
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    return normalized
+  }
+  const { data } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(normalized)
+  return data?.publicUrl || ''
+}
+
+function buildCoverUrl(coverUrl) {
+  if (typeof coverUrl !== 'string' || !coverUrl.trim()) return '/hero/hero1.jpg'
+  return coverUrl.trim()
 }
 
 function normalizeUsername(user, dbUser) {
@@ -87,7 +97,7 @@ async function getCurrentUserOrThrow() {
 async function findProfileRow(userId) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,avatar_path')
+    .select('id,avatar_path,cover_url')
     .eq('id', userId)
     .maybeSingle()
 
@@ -116,11 +126,13 @@ export async function fetchCurrentProfile() {
     fullName: dbUser?.full_name || username,
     bio: dbUser?.bio || '',
     avatarPath: profileRow?.avatar_path || '',
+    coverUrl: profileRow?.cover_url || '',
   }
 
   return {
     ...profile,
     avatarUrl: buildAvatarUrl(profile.avatarPath),
+    coverUrl: buildCoverUrl(profile.coverUrl),
   }
 }
 
@@ -156,6 +168,67 @@ export async function uploadAvatarAndPersistPath(file) {
 
   if (upsertProfileError) {
     throw new Error(`Failed to save avatar path: ${upsertProfileError.message}`)
+  }
+
+  const profile = await fetchCurrentProfile()
+  emitProfileUpdated(profile)
+  return profile
+}
+
+export function validateCoverFile(file) {
+  if (!file) {
+    return { valid: false, message: 'Please select a cover image file.' }
+  }
+  if (file.size > MAX_COVER_BYTES) {
+    return { valid: false, message: 'Cover upload failed: maximum size is 5MB.' }
+  }
+
+  const extension = getFileExtension(file.name)
+  if (!ALLOWED_EXTENSIONS.has(extension) || !ALLOWED_MIME_TYPES.has(file.type)) {
+    return { valid: false, message: 'Cover upload failed: only PNG or JPEG files are supported.' }
+  }
+
+  return { valid: true, message: '' }
+}
+
+export async function uploadCoverAndPersistUrl(file) {
+  const validation = validateCoverFile(file)
+  if (!validation.valid) {
+    throw new Error(validation.message)
+  }
+
+  const user = await getCurrentUserOrThrow()
+  const extension = getFileExtension(file.name) || 'jpg'
+  const coverPath = `${user.id}/cover`
+  const contentType = extension === 'png' ? 'image/png' : 'image/jpeg'
+
+  const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(coverPath, file, {
+    cacheControl: '3600',
+    upsert: true,
+    contentType,
+  })
+
+  if (uploadError) {
+    throw new Error(`Cover upload failed: ${uploadError.message}`)
+  }
+
+  const { data: urlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(coverPath)
+  const publicUrl = urlData?.publicUrl ?? ''
+  if (!publicUrl) {
+    throw new Error('Cover upload failed: could not retrieve public URL.')
+  }
+
+  const { error: upsertProfileError } = await supabase.from('profiles').upsert(
+    {
+      id: user.id,
+      cover_url: publicUrl,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  )
+
+  if (upsertProfileError) {
+    throw new Error(`Failed to save cover URL: ${upsertProfileError.message}`)
   }
 
   const profile = await fetchCurrentProfile()

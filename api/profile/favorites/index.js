@@ -1,8 +1,16 @@
-import { toErrorResponse } from "../../_lib/errors.js";
+import { toErrorResponse, ValidationError } from "../../_lib/errors.js";
 import { getRequestId, sendJson } from "../../_lib/http.js";
 import { logError } from "../../_lib/logger.js";
 import { resolveAuthenticatedUserId } from "../auth.js";
 import { buildProfileContainer } from "../container.js";
+
+function parseBacklogIdFromQuery(req) {
+  const raw = req.query?.id;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new ValidationError("Missing backlog id in query param 'id'.");
+  }
+  return raw.trim();
+}
 
 export default async function handler(req, res) {
   const requestId = getRequestId(req);
@@ -13,6 +21,13 @@ export default async function handler(req, res) {
 
     if (req.method === "PUT") {
       const payload = await profileService.replaceFavoritesForUser(userId, req.body ?? {});
+      sendJson(res, 200, payload, requestId);
+      return;
+    }
+
+    if (req.method === "PATCH") {
+      const backlogId = parseBacklogIdFromQuery(req);
+      const payload = await profileService.setFavoriteForBacklogItem(userId, backlogId, req.body ?? {});
       sendJson(res, 200, payload, requestId);
       return;
     }

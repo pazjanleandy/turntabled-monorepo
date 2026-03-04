@@ -3,10 +3,10 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { BookOpen, Compass, House, MusicNotes, SignOut } from 'phosphor-react'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import {
+  emitProfileUpdated,
   PROFILE_EVENT_NAME,
   fetchCurrentProfile,
   readCachedProfile,
-  writeCachedProfile,
 } from '../lib/profileClient.js'
 
 export default function Navbar({ className = '' }) {
@@ -16,7 +16,7 @@ export default function Navbar({ className = '' }) {
     const cached = readCachedProfile()
     return {
       username: cached?.username || '',
-      avatarUrl: cached?.avatarUrl || '/profile/rainy.jpg',
+      avatarUrl: cached?.avatarUrl || '',
     }
   })
 
@@ -29,7 +29,7 @@ export default function Navbar({ className = '' }) {
       try {
         const profile = await fetchCurrentProfile()
         if (!cancelled) {
-          writeCachedProfile(profile)
+          emitProfileUpdated(profile)
           setNavUser({ username: profile.username, avatarUrl: profile.avatarUrl })
         }
       } catch {
@@ -42,7 +42,7 @@ export default function Navbar({ className = '' }) {
       if (!profile) return
       setNavUser({
         username: profile.username || '',
-        avatarUrl: profile.avatarUrl || '/profile/rainy.jpg',
+        avatarUrl: profile.avatarUrl || '',
       })
     }
 
@@ -58,7 +58,7 @@ export default function Navbar({ className = '' }) {
   const handleSignOut = (event) => {
     event.preventDefault()
     signOut()
-    setNavUser({ username: '', avatarUrl: '/profile/rainy.jpg' })
+    setNavUser({ username: '', avatarUrl: '' })
     navigate('/')
   }
 
@@ -109,11 +109,17 @@ export default function Navbar({ className = '' }) {
             ].join(' ')
           }
         >
-          <img
-            src={navUser.avatarUrl}
-            alt={`${navUser.username || 'User'} avatar`}
-            className="h-8 w-8 rounded-full object-cover transition duration-200 group-hover:scale-105"
-          />
+          {navUser.avatarUrl ? (
+            <img
+              src={navUser.avatarUrl}
+              alt={`${navUser.username || 'User'} avatar`}
+              className="h-8 w-8 rounded-full object-cover transition duration-200 group-hover:scale-105"
+            />
+          ) : (
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-accent/15 text-[11px] font-bold text-accent">
+              {(navUser.username || 'U').slice(0, 2).toUpperCase()}
+            </span>
+          )}
           {navUser.username || ' '}
         </NavLink>
 

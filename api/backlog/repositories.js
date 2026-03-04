@@ -21,7 +21,7 @@ export class BacklogRepository {
     const { data, error, count } = await this.supabase
       .from("backlog")
       .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,added_at,updated_at,album:album_id(id,cover_art_url)",
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at,album:album_id(id,cover_art_url)",
         { count: "exact" }
       )
       .eq("user_id", userId)
@@ -35,7 +35,7 @@ export class BacklogRepository {
   async findById(id) {
     const { data, error } = await this.supabase
       .from("backlog")
-      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,added_at,updated_at")
+      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -70,7 +70,7 @@ export class BacklogRepository {
     const { data, error } = await this.supabase
       .from("backlog")
       .insert(payload)
-      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,added_at,updated_at")
+      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at")
       .single();
 
     handleDbError(error, "creating backlog item");
@@ -82,7 +82,7 @@ export class BacklogRepository {
       .from("backlog")
       .update({ rating, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,added_at,updated_at")
+      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at")
       .single();
 
     handleDbError(error, "updating backlog rating");

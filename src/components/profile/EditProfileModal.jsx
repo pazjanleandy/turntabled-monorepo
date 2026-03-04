@@ -9,18 +9,36 @@ import {
   validateAvatarFile,
 } from '../../lib/profileClient.js'
 
+function getFavoriteIds(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item?.isFavorite && item?.backlogId)
+    .map((item) => item.backlogId)
+    .sort()
+}
+
+function favoriteIdsChanged(beforeItems, afterItems) {
+  const before = getFavoriteIds(beforeItems)
+  const after = getFavoriteIds(afterItems)
+  if (before.length !== after.length) return true
+  for (let i = 0; i < before.length; i += 1) {
+    if (before[i] !== after[i]) return true
+  }
+  return false
+}
+
 export default function EditProfileModal({
   isOpen,
   user,
   favorites,
   favoriteCovers,
   onClose,
-  onReplaceFavorite,
+  onSaveFavorites,
   onSaved,
 }) {
   const [name, setName] = useState(user?.name ?? '')
   const [bio, setBio] = useState(user?.bio ?? '')
   const [selectedFile, setSelectedFile] = useState(null)
+  const [editableFavorites, setEditableFavorites] = useState([])
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -30,13 +48,24 @@ export default function EditProfileModal({
     setName(user?.name ?? '')
     setBio(user?.bio ?? '')
     setSelectedFile(null)
+    setEditableFavorites(Array.isArray(favorites) ? favorites : [])
     setErrorMessage('')
     setSuccessMessage('')
-  }, [isOpen, user?.name, user?.bio])
+  }, [isOpen, user?.name, user?.bio, favorites])
+
+  const hasFavoriteChanges = useMemo(
+    () => favoriteIdsChanged(favorites, editableFavorites),
+    [favorites, editableFavorites]
+  )
 
   const hasPendingChanges = useMemo(() => {
-    return name.trim() !== (user?.name ?? '') || bio.trim() !== (user?.bio ?? '') || Boolean(selectedFile)
-  }, [name, bio, selectedFile, user?.name, user?.bio])
+    return (
+      name.trim() !== (user?.name ?? '') ||
+      bio.trim() !== (user?.bio ?? '') ||
+      Boolean(selectedFile) ||
+      hasFavoriteChanges
+    )
+  }, [name, bio, selectedFile, user?.name, user?.bio, hasFavoriteChanges])
 
   const handleFileChange = (event) => {
     setErrorMessage('')
@@ -56,6 +85,19 @@ export default function EditProfileModal({
     }
 
     setSelectedFile(nextFile)
+  }
+
+  const handleToggleFavoriteClick = (album) => {
+    const backlogId = album?.backlogId
+    if (!backlogId) return
+
+    setErrorMessage('')
+    setSuccessMessage('')
+    setEditableFavorites((current) =>
+      current.map((item) =>
+        item.backlogId === backlogId ? { ...item, isFavorite: !item.isFavorite } : item
+      )
+    )
   }
 
   const handleSaveChanges = async () => {
@@ -98,8 +140,16 @@ export default function EditProfileModal({
         }
       }
 
-      // Always sync avatar/profile snapshot after save so text-only updates
-      // never overwrite the currently uploaded avatar in UI state.
+      if (hasFavoriteChanges && onSaveFavorites) {
+        const favoritePayload = await onSaveFavorites(getFavoriteIds(editableFavorites))
+        result = result ?? { user: {} }
+        result.favorites = favoritePayload?.favorites ?? result.favorites
+        result.user = {
+          ...(result.user ?? {}),
+          ...(favoritePayload?.user ?? {}),
+        }
+      }
+
       const syncedProfile = latestAvatarProfile ?? (await fetchCurrentProfile().catch(() => null))
       if (syncedProfile) {
         emitProfileUpdated(syncedProfile)
@@ -113,6 +163,7 @@ export default function EditProfileModal({
           payload.user.fullName = payload.user.fullName || syncedProfile.fullName
           payload.user.bio = payload.user.bio ?? syncedProfile.bio
           payload.user.avatarUrl = syncedProfile.avatarUrl
+          payload.user.coverUrl = syncedProfile.coverUrl
         }
         onSaved?.(payload)
       }
@@ -201,14 +252,14 @@ export default function EditProfileModal({
           <div>
             <div className="flex items-center justify-between gap-3">
               <p className="mb-0 text-sm font-semibold text-text">
-                Favorite albums (replace)
+                Favorite albums
               </p>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-                {favorites.length} slots
+                {editableFavorites.length} slots
               </span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {favorites.map((album, index) => {
+              {editableFavorites.map((album) => {
                 const key = `${album.artist} - ${album.title}`
                 return (
                   <div
@@ -230,10 +281,11 @@ export default function EditProfileModal({
                     </div>
                     <button
                       type="button"
-                      className="rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
-                      onClick={() => onReplaceFavorite(index)}
+                      className="rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => handleToggleFavoriteClick(album)}
+                      disabled={isSaving}
                     >
-                      Replace
+                      {album.isFavorite ? 'Remove' : 'Add'}
                     </button>
                   </div>
                 )
