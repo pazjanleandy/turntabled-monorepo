@@ -12,6 +12,13 @@ export default async function handler(req, res) {
     const userId = await resolveAuthenticatedUserId(req, supabase);
 
     if (req.method === "GET") {
+      const albumId = req.query?.albumId;
+      if (typeof albumId === "string" && albumId.trim()) {
+        const item = await backlogService.findForUserByAlbumId(userId, albumId.trim());
+        sendJson(res, 200, { item }, requestId);
+        return;
+      }
+
       const { page, limit } = parsePagination(req.query);
       const payload = await backlogService.listForUser(userId, page, limit);
       sendJson(res, 200, payload, requestId);
@@ -21,6 +28,16 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const created = await backlogService.addForUser(userId, req.body ?? {});
       sendJson(res, 201, { item: created }, requestId);
+      return;
+    }
+
+    if (req.method === "PATCH") {
+      const backlogId = req.query?.id;
+      if (typeof backlogId !== "string" || !backlogId.trim()) {
+        throw new ValidationError("Missing backlog id in query param 'id'.");
+      }
+      const updated = await backlogService.updateForUser(userId, backlogId.trim(), req.body ?? {});
+      sendJson(res, 200, { item: updated }, requestId);
       return;
     }
 

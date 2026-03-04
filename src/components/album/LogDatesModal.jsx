@@ -23,7 +23,7 @@ export default function LogDatesModal({
   const [selectedStatus, setSelectedStatus] = useState('pending')
   const [selectedRating, setSelectedRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
-  const [notes, setNotes] = useState('')
+  const [reviewText, setReviewText] = useState('')
   const [listenedOn, setListenedOn] = useState(() => new Date().toISOString().split('T')[0])
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -49,7 +49,7 @@ export default function LogDatesModal({
     setSelectedStatus('pending')
     setSelectedRating(0)
     setHoverRating(0)
-    setNotes('')
+    setReviewText('')
     setListenedOn(today)
     setSaveError('')
   }, [isOpen, today])
@@ -60,6 +60,8 @@ export default function LogDatesModal({
       setSaveError('Please select a rating from 1 to 5 stars.')
       return
     }
+
+    const trimmedReview = reviewText.trim()
 
     setIsSaving(true)
     setSaveError('')
@@ -80,7 +82,7 @@ export default function LogDatesModal({
           status: selectedStatus,
           rating: selectedRating,
           listenedOn,
-          notes: notes.trim() || null,
+          ...(trimmedReview ? { reviewText: trimmedReview } : {}),
         }),
       })
 
@@ -217,13 +219,13 @@ export default function LogDatesModal({
 
           <label className="space-y-2">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-              Notes
+              Review (optional)
             </span>
             <textarea
               rows={4}
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Add quick thoughts about this listen."
+              value={reviewText}
+              onChange={(event) => setReviewText(event.target.value)}
+              placeholder="Share your thoughts on the album."
               className="w-full resize-none rounded-2xl border border-black/10 bg-white/80 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black/30"
             />
           </label>

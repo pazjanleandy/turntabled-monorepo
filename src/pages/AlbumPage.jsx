@@ -9,7 +9,10 @@ import StarRating from "../components/StarRating.jsx";
 import LogDatesModal from "../components/album/LogDatesModal.jsx";
 import ReviewModal from "../components/album/ReviewModal.jsx";
 import useAuthStatus from "../hooks/useAuthStatus.js";
+import { buildApiAuthHeaders } from "../lib/apiAuth.js";
 import { supabase } from "../supabase.js";
+
+const BACKLOG_UPDATED_EVENT_NAME = "turntabled:backlog-updated";
 
 function LogCard({ onLogDates, onWriteReview, disabled }) {
   return (
@@ -65,6 +68,7 @@ export default function AlbumPage() {
   const [isLogDatesOpen, setIsLogDatesOpen] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [logNotice, setLogNotice] = useState("");
+  const [backlogItem, setBacklogItem] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +130,56 @@ export default function AlbumPage() {
       genres: Array.isArray(album.genres) ? album.genres : ["Unknown"],
     };
   }, [album]);
+
+  useEffect(() => {
+    if (!isSignedIn || !safeAlbum?.id) {
+      setBacklogItem(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadBacklogItem() {
+      try {
+        const apiBase = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL ?? "";
+        const authHeaders = await buildApiAuthHeaders();
+        const params = new URLSearchParams({ albumId: safeAlbum.id });
+        const response = await fetch(`${apiBase}/api/backlog?${params.toString()}`, {
+          headers: authHeaders,
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error?.message ?? "Failed to load existing review.");
+        }
+
+        if (!cancelled) {
+          setBacklogItem(payload?.item ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setBacklogItem(null);
+        }
+      }
+    }
+
+    loadBacklogItem();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, safeAlbum?.id]);
+
+  const emitBacklogUpdated = () => {
+    window.dispatchEvent(new CustomEvent(BACKLOG_UPDATED_EVENT_NAME));
+  };
+
+  const handleBacklogSaved = (item, notice) => {
+    setBacklogItem(item ?? null);
+    if (notice) {
+      setLogNotice(notice);
+      window.setTimeout(() => setLogNotice(""), 2200);
+    }
+    emitBacklogUpdated();
+  };
 
   if (isLoading) {
     return (
@@ -298,15 +352,19 @@ export default function AlbumPage() {
         albumTitle={safeAlbum?.title}
         albumArtist={safeAlbum?.artist}
         albumArt={safeAlbum?.cover}
-        onSaved={() => {
-          setLogNotice("Album logged")
-          window.setTimeout(() => setLogNotice(""), 2200)
+        onSaved={(item) => {
+          handleBacklogSaved(item, "Review saved")
         }}
       />
       <ReviewModal
         isOpen={isReviewOpen}
         onClose={() => setIsReviewOpen(false)}
+        backlogId={backlogItem?.id ?? ''}
         albumTitle={safeAlbum?.title}
+        initialReviewText={backlogItem?.reviewText ?? ''}
+        onSaved={(item) => {
+          handleBacklogSaved(item, "Review updated")
+        }}
       />
     </div>
   );

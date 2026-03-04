@@ -21,7 +21,7 @@ export class BacklogRepository {
     const { data, error, count } = await this.supabase
       .from("backlog")
       .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at,album:album_id(id,cover_art_url)",
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)",
         { count: "exact" }
       )
       .eq("user_id", userId)
@@ -35,7 +35,9 @@ export class BacklogRepository {
   async findById(id) {
     const { data, error } = await this.supabase
       .from("backlog")
-      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -46,12 +48,28 @@ export class BacklogRepository {
   async findDuplicateByUser(userId, albumId) {
     const { data, error } = await this.supabase
       .from("backlog")
-      .select("id")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
+      )
       .eq("user_id", userId)
       .eq("album_id", albumId)
       .maybeSingle();
 
     handleDbError(error, "checking duplicate backlog item");
+    return data;
+  }
+
+  async findByUserAndAlbum(userId, albumId) {
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
+      )
+      .eq("user_id", userId)
+      .eq("album_id", albumId)
+      .maybeSingle();
+
+    handleDbError(error, "fetching backlog item by user and album");
     return data;
   }
 
@@ -63,6 +81,8 @@ export class BacklogRepository {
       album_title_raw: item.albumTitleRaw,
       status: item.status ?? "pending",
       rating: item.rating,
+      review_text: item.reviewText ?? null,
+      reviewed_at: item.reviewedAt ?? null,
       source: item.source ?? "explore",
       added_at: item.addedAt ?? undefined,
     };
@@ -70,22 +90,37 @@ export class BacklogRepository {
     const { data, error } = await this.supabase
       .from("backlog")
       .insert(payload)
-      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
+      )
       .single();
 
     handleDbError(error, "creating backlog item");
     return data;
   }
 
-  async updateRating(id, rating) {
+  async updateById(id, patch) {
+    const payload = {
+      ...(Object.prototype.hasOwnProperty.call(patch, "rating") ? { rating: patch.rating } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "review_text")
+        ? { review_text: patch.review_text }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "reviewed_at")
+        ? { reviewed_at: patch.reviewed_at }
+        : {}),
+      updated_at: new Date().toISOString(),
+    };
+
     const { data, error } = await this.supabase
       .from("backlog")
-      .update({ rating, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq("id", id)
-      .select("id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,added_at,updated_at")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
+      )
       .single();
 
-    handleDbError(error, "updating backlog rating");
+    handleDbError(error, "updating backlog item");
     return data;
   }
 

@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react'
 import { X } from 'phosphor-react'
+import { buildApiAuthHeaders } from '../../lib/apiAuth.js'
 
-export default function ReviewModal({ isOpen, onClose, albumTitle = '' }) {
-  const [title, setTitle] = useState('')
+export default function ReviewModal({
+  isOpen,
+  onClose,
+  albumTitle = '',
+  backlogId = '',
+  initialReviewText = '',
+  onSaved = null,
+}) {
   const [body, setBody] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     if (!isOpen) return undefined
@@ -16,9 +25,55 @@ export default function ReviewModal({ isOpen, onClose, albumTitle = '' }) {
 
   useEffect(() => {
     if (!isOpen) return
-    setTitle('')
-    setBody('')
-  }, [isOpen])
+    setBody(initialReviewText || '')
+    setSaveError('')
+    setIsSaving(false)
+  }, [initialReviewText, isOpen])
+
+  const handleSave = async () => {
+    if (isSaving) return
+
+    const trimmed = body.trim()
+    if (!trimmed) {
+      setSaveError('Review cannot be empty or whitespace only.')
+      return
+    }
+
+    if (!backlogId) {
+      setSaveError('Log this album first before writing a review.')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveError('')
+
+    try {
+      const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+      const authHeaders = await buildApiAuthHeaders()
+      const response = await fetch(`${apiBase}/api/backlog?id=${encodeURIComponent(backlogId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({ reviewText: trimmed }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? 'Failed to save review.')
+      }
+
+      if (typeof onSaved === 'function') {
+        onSaved(payload?.item ?? null)
+      }
+      onClose()
+    } catch (error) {
+      setSaveError(error?.message ?? 'Unable to save review.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   if (!isOpen) return null
 
@@ -54,20 +109,9 @@ export default function ReviewModal({ isOpen, onClose, albumTitle = '' }) {
 
         <div className="mt-5 space-y-4 text-sm">
           <label className="space-y-2 font-semibold text-text">
-            Review title
-            <input
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Give your review a short title"
-              className="w-full rounded-lg border border-black/10 bg-white/80 px-3 py-2 text-sm text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-            />
-          </label>
-
-          <label className="space-y-2 font-semibold text-text">
             Your review
             <textarea
-              rows={5}
+              rows={6}
               value={body}
               onChange={(event) => setBody(event.target.value)}
               placeholder="Share your thoughts on the album."
@@ -76,8 +120,15 @@ export default function ReviewModal({ isOpen, onClose, albumTitle = '' }) {
           </label>
         </div>
 
-        <button type="button" className="btn-primary mt-6 w-full py-2 text-sm">
-          Save review
+        {saveError ? <p className="mb-0 mt-3 text-sm font-semibold text-red-700">{saveError}</p> : null}
+
+        <button
+          type="button"
+          className="btn-primary mt-6 w-full py-2 text-sm"
+          onClick={handleSave}
+          disabled={isSaving}
+        >
+          {isSaving ? 'Saving...' : 'Save review'}
         </button>
       </div>
     </div>

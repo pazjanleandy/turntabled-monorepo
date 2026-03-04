@@ -1,14 +1,28 @@
 import CoverImage from '../CoverImage.jsx'
 import StarRating from '../StarRating.jsx'
 
+function formatReviewDate(value) {
+  if (!value) return 'Unknown date'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown date'
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
 export default function ReviewRow({
+  backlogId,
   title,
   artist,
-  year,
   rating,
-  summary,
-  timeAgo,
+  reviewText,
+  reviewedAt,
   cover,
+  onEdit = null,
+  onDelete = null,
+  isBusy = false,
   elevated = true,
 }) {
   const rowClass = elevated
@@ -26,16 +40,36 @@ export default function ReviewRow({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="mb-0 text-base text-text">{title}</h3>
-            <p className="mb-0 text-xs text-slate-600">
-              {artist} - {year}
-            </p>
+            <p className="mb-0 text-xs text-slate-600">{artist}</p>
           </div>
-          <span className="rounded-full border border-black/10 bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-            {timeAgo}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-black/10 bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+              {formatReviewDate(reviewedAt)}
+            </span>
+            {typeof onEdit === 'function' ? (
+              <button
+                type="button"
+                className="rounded-full border border-black/10 bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600 transition hover:text-text disabled:opacity-60"
+                onClick={() => onEdit({ backlogId, title, reviewText })}
+                disabled={isBusy || !backlogId}
+              >
+                Edit
+              </button>
+            ) : null}
+            {typeof onDelete === 'function' ? (
+              <button
+                type="button"
+                className="rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                onClick={() => onDelete({ backlogId, title })}
+                disabled={isBusy || !backlogId}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
         </div>
-        <p className="mb-0 mt-2 text-sm text-slate-700">{summary}</p>
-        <StarRating value={rating} readOnly size={14} className="mt-2" />
+        <p className="mb-0 mt-2 text-sm text-slate-700 whitespace-pre-wrap">{reviewText}</p>
+        <StarRating value={rating ?? 0} readOnly size={14} className="mt-2" />
       </div>
     </article>
   )

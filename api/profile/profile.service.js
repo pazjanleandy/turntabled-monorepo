@@ -82,7 +82,26 @@ function mapFavorite(row) {
   };
 }
 
-function mapProfile(user, favorites) {
+function mapReview(row) {
+  return {
+    backlogId: row.id,
+    albumId: row.album_id,
+    rating: row.rating ?? null,
+    reviewText: row.review_text ?? null,
+    reviewedAt: row.reviewed_at ?? null,
+    addedAt: row.added_at ?? null,
+    updatedAt: row.updated_at ?? null,
+    album: {
+      id: row?.album?.id ?? row.album_id,
+      title: row?.album?.title ?? row.album_title_raw ?? null,
+      artistName: row?.album?.artist?.name ?? row.artist_name_raw ?? null,
+      coverArtUrl: row?.album?.cover_art_url ?? null,
+      releaseId: row?.album?.mbid ?? null,
+    },
+  };
+}
+
+function mapProfile(user, favorites, reviews) {
   return {
     user: {
       id: user.id,
@@ -93,6 +112,7 @@ function mapProfile(user, favorites) {
       avatarUrl: user.avatar_url ?? null,
     },
     favorites: favorites.map((item) => mapFavorite(item)),
+    reviews: reviews.map((item) => mapReview(item)),
   };
 }
 
@@ -107,8 +127,11 @@ export class ProfileService {
       throw new ValidationError("Profile not found.");
     }
 
-    const favorites = await this.profileRepository.listFavoritesByUser(userId);
-    return mapProfile(user, favorites);
+    const [favorites, reviews] = await Promise.all([
+      this.profileRepository.listFavoritesByUser(userId),
+      this.profileRepository.listReviewsByUser(userId),
+    ]);
+    return mapProfile(user, favorites, reviews);
   }
 
   async updateProfileForUser(userId, input) {

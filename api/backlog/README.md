@@ -2,6 +2,7 @@
 
 ## Endpoints
 - `GET /api/backlog?page=1&limit=20`
+- `GET /api/backlog?albumId=<uuid>`
 - `POST /api/backlog`
 - `PATCH /api/backlog/:id`
 - `DELETE /api/backlog/:id`
@@ -19,36 +20,33 @@
   "albumTitleRaw": "Album Title",
   "status": "pending",
   "listenedOn": "2026-02-24",
-  "rating": 4
+  "rating": 4,
+  "reviewText": "Great album front to back."
 }
 ```
+
+Behavior:
+- If no row exists for `(user_id, album_id)`: creates backlog row.
+- If row exists and `reviewText` is provided: updates `review_text` and `reviewed_at` on that row.
 
 - `PATCH /api/backlog/:id`
 ```json
 {
-  "rating": 5
+  "rating": 5,
+  "reviewText": "Updated thoughts after relisten."
 }
 ```
 
 ## Validation
-- `rating` must be an integer in `[1,5]`.
+- `rating` must be an integer in `[1,5]` when provided.
 - `status` must be one of `completed|listening|unfinished|pending|favorite`.
 - `listenedOn` (optional) must be `YYYY-MM-DD`.
-- Duplicate album per user is rejected.
-- Users can only read/update/delete their own backlog entries.
+- `reviewText` (optional in payload) cannot be empty or whitespace-only.
+- Users can only read/update/delete their own backlog entries from API endpoints.
 
 ## Database Notes
-If your `backlog` table does not yet include rating, run:
+Run migration:
 
 ```sql
-alter table public.backlog
-add column if not exists rating smallint;
-
-alter table public.backlog
-add constraint backlog_rating_range
-check (rating between 1 and 5);
-
-create unique index if not exists backlog_user_album_unique
-on public.backlog(user_id, album_id)
-where album_id is not null;
+-- see db/migrations/20260304_backlog_reviews.sql
 ```

@@ -62,6 +62,20 @@ export class ProfileRepository {
     return data ?? [];
   }
 
+  async listReviewsByUser(userId) {
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select(
+        "id,album_id,artist_name_raw,album_title_raw,rating,review_text,reviewed_at,added_at,updated_at,album:album_id(id,title,cover_art_url,mbid,artist:artist_id(id,name))"
+      )
+      .eq("user_id", userId)
+      .not("review_text", "is", null)
+      .order("reviewed_at", { ascending: false, nullsFirst: false });
+
+    handleDbError(error, "fetching reviews");
+    return data ?? [];
+  }
+
   async updateFavoriteByBacklogId(userId, backlogId, isFavorite) {
     const { data, error } = await this.supabase
       .from("backlog")

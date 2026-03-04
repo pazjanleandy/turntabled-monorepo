@@ -3,6 +3,7 @@ import { Radio } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import LastFmConnectButton from '../components/LastFmConnectButton.jsx'
+import ReviewModal from '../components/album/ReviewModal.jsx'
 import EditProfileModal from '../components/profile/EditProfileModal.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
 import FriendsSection from '../components/profile/FriendsSection.jsx'
@@ -15,7 +16,6 @@ import StatsSection from '../components/profile/StatsSection.jsx'
 import {
   friends,
   profileUser,
-  reviews,
 } from '../data/profileData.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
@@ -26,8 +26,10 @@ import {
   readCachedProfile,
   uploadCoverAndPersistUrl,
 } from '../lib/profileClient.js'
+import { supabase } from '../supabase.js'
 
 const LOG_STATUSES = new Set(['completed', 'favorite'])
+const BACKLOG_UPDATED_EVENT_NAME = 'turntabled:backlog-updated'
 
 function formatRelativeTime(value) {
   if (!value) return 'just now'
@@ -81,6 +83,25 @@ function mapApiFavoritesToAlbums(payload) {
   }))
 }
 
+function mapBacklogReviews(items = []) {
+  return items
+    .filter((item) => typeof item?.reviewText === 'string' && item.reviewText.trim())
+    .sort((a, b) => {
+      const aTime = Date.parse(a?.reviewedAt ?? '') || 0
+      const bTime = Date.parse(b?.reviewedAt ?? '') || 0
+      return bTime - aTime
+    })
+    .map((item) => ({
+      backlogId: item?.id ?? null,
+      title: item?.albumTitleRaw ?? 'Unknown album',
+      artist: item?.artistNameRaw ?? 'Unknown artist',
+      cover: item?.coverArtUrl || '/album/am.jpg',
+      reviewText: item?.reviewText ?? '',
+      rating: item?.rating ?? 0,
+      reviewedAt: item?.reviewedAt ?? null,
+    }))
+}
+
 function mapApiProfileToViewModel(profilePayload, fallbackUser) {
   const apiUser = profilePayload?.user ?? {}
   const normalizedUsername =
@@ -129,10 +150,10 @@ export default function Profile() {
   const [favoritesLoading, setFavoritesLoading] = useState(false)
   const [recentCarousel, setRecentCarousel] = useState([])
   const [recentActivityLogs, setRecentActivityLogs] = useState([])
+  const [reviewList, setReviewList] = useState([])
   const favorites = profileFavorites
   const recent = recentActivityLogs
   const friendsList = friends
-  const reviewList = reviews
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [lastfmUsername, setLastfmUsername] = useState(
@@ -146,6 +167,8 @@ export default function Profile() {
   const [backlogPreview, setBacklogPreview] = useState([])
   const [loggedAlbumsForEdit, setLoggedAlbumsForEdit] = useState([])
   const [backlogLoading, setBacklogLoading] = useState(false)
+  const [editingReview, setEditingReview] = useState(null)
+  const [isDeletingReview, setIsDeletingReview] = useState(false)
 
   const favoriteCovers = {}
   const editFavoriteCovers = {}
@@ -171,12 +194,14 @@ export default function Profile() {
       setLoggedAlbumsForEdit([])
       setRecentCarousel([])
       setRecentActivityLogs([])
+      setReviewList([])
       setProfileFavorites([])
       setFavoritesLoading(false)
       return
     }
 
     let cancelled = false
+    let realtimeChannel = null
 
     async function loadBacklogPreview() {
       setBacklogLoading(true)
@@ -230,6 +255,7 @@ export default function Profile() {
           setBacklogPreview(allItems.slice(0, 5))
           setRecentCarousel(recentItems)
           setRecentActivityLogs(latestLogs)
+          setReviewList(mapBacklogReviews(allItems))
           setLoggedAlbumsForEdit(
             allItems.map((item) => ({
               title: item?.albumTitleRaw ?? 'Unknown album',
@@ -245,6 +271,7 @@ export default function Profile() {
           setBacklogPreview([])
           setRecentCarousel([])
           setRecentActivityLogs([])
+          setReviewList([])
           setLoggedAlbumsForEdit([])
         }
       } finally {
@@ -254,9 +281,35 @@ export default function Profile() {
       }
     }
 
+    const handleBacklogUpdated = () => {
+      if (cancelled) return
+      loadBacklogPreview()
+    }
+
+    const subscribeToRealtimeBacklog = async () => {
+      const { data } = await supabase.auth.getSession()
+      const userId = data?.session?.user?.id
+      if (!userId || cancelled) return
+
+      realtimeChannel = supabase
+        .channel(`profile-backlog-${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'backlog', filter: `user_id=eq.${userId}` },
+          handleBacklogUpdated
+        )
+        .subscribe()
+    }
+
+    window.addEventListener(BACKLOG_UPDATED_EVENT_NAME, handleBacklogUpdated)
     loadBacklogPreview()
+    subscribeToRealtimeBacklog()
     return () => {
       cancelled = true
+      window.removeEventListener(BACKLOG_UPDATED_EVENT_NAME, handleBacklogUpdated)
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel)
+      }
     }
   }, [isSignedIn])
 
@@ -471,6 +524,46 @@ export default function Profile() {
     return payload
   }
 
+  const emitBacklogUpdated = () => {
+    window.dispatchEvent(new CustomEvent(BACKLOG_UPDATED_EVENT_NAME))
+  }
+
+  const handleEditReview = (review) => {
+    setEditingReview(review ?? null)
+  }
+
+  const handleDeleteReview = async (review) => {
+    const backlogId = review?.backlogId
+    if (!backlogId || isDeletingReview) return
+
+    const confirmed = window.confirm('Delete this review? The album log will remain in your backlog.')
+    if (!confirmed) return
+
+    setIsDeletingReview(true)
+    try {
+      const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+      const authHeaders = await buildApiAuthHeaders()
+      const response = await fetch(`${apiBase}/api/backlog?id=${encodeURIComponent(backlogId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({ clearReview: true }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? 'Failed to delete review.')
+      }
+
+      emitBacklogUpdated()
+    } catch {
+      // Keep UX lightweight for now; refresh cycle continues on next successful sync.
+    } finally {
+      setIsDeletingReview(false)
+    }
+  }
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
@@ -546,7 +639,13 @@ export default function Profile() {
                       recentRatings={recentRatings}
                       onRecentRatingChange={handleRecentRatingChange}
                     />
-                    <ReviewsSection reviews={reviewList} asCard={false} />
+                    <ReviewsSection
+                      reviews={reviewList}
+                      onEditReview={handleEditReview}
+                      onDeleteReview={handleDeleteReview}
+                      isReviewActionBusy={isDeletingReview}
+                      asCard={false}
+                    />
                   </aside>
 
                   <aside className="flex flex-col gap-6 lg:col-span-4">
@@ -620,6 +719,17 @@ export default function Profile() {
         onClose={closeEditModal}
         onSaveFavorites={handleSaveFavorites}
         onSaved={handleProfileSaved}
+      />
+      <ReviewModal
+        isOpen={Boolean(editingReview)}
+        onClose={() => setEditingReview(null)}
+        backlogId={editingReview?.backlogId ?? ''}
+        albumTitle={editingReview?.title ?? ''}
+        initialReviewText={editingReview?.reviewText ?? ''}
+        onSaved={() => {
+          setEditingReview(null)
+          emitBacklogUpdated()
+        }}
       />
     </div>
   )

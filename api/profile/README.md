@@ -39,3 +39,4 @@
 - All successful write endpoints return the full updated profile payload:
   - `user` info (`fullName`, `bio`, `avatarUrl`, etc.)
   - `favorites` list with joined album metadata.
+  - `reviews` list sourced from backlog rows where `review_text` is not null, sorted by `reviewed_at` descending.

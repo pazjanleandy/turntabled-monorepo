@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     const backlogId = parseBacklogId(req);
 
     if (req.method === "PATCH") {
-      const updated = await backlogService.updateRatingForUser(userId, backlogId, req.body ?? {});
+      const updated = await backlogService.updateForUser(userId, backlogId, req.body ?? {});
       sendJson(res, 200, { item: updated }, requestId);
       return;
     }

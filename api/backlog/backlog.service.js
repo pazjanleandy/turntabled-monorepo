@@ -48,6 +48,20 @@ function parseListenedOnDate(value) {
   return iso;
 }
 
+function assertOptionalReviewText(value, fieldName = "reviewText") {
+  if (value == null) return null;
+  if (typeof value !== "string") {
+    throw new ValidationError(`Field '${fieldName}' must be a string.`);
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new ValidationError(`Field '${fieldName}' cannot be empty or whitespace only.`);
+  }
+
+  return trimmed;
+}
+
 function mapItem(row) {
   return {
     id: row.id,
@@ -57,6 +71,8 @@ function mapItem(row) {
     status: row.status ?? "pending",
     rating: row.rating,
     isFavorite: Boolean(row.is_favorite),
+    reviewText: row.review_text ?? null,
+    reviewedAt: row.reviewed_at ?? null,
     addedAt: row.added_at,
     updatedAt: row.updated_at,
     coverArtUrl: row?.album?.cover_art_url ?? null,
@@ -78,6 +94,12 @@ export class BacklogService {
     };
   }
 
+  async findForUserByAlbumId(userId, albumId) {
+    const normalizedAlbumId = assertUuidLike(albumId, "albumId");
+    const item = await this.backlogRepository.findByUserAndAlbum(userId, normalizedAlbumId);
+    return item ? mapItem(item) : null;
+  }
+
   async addForUser(userId, input) {
     const albumId = assertUuidLike(input?.albumId, "albumId");
     const artistNameRaw = assertString(input?.artistNameRaw, "artistNameRaw");
@@ -85,10 +107,19 @@ export class BacklogService {
     const status = assertStatus(input?.status ?? "pending");
     const rating = assertRating(input?.rating, "rating");
     const addedAt = parseListenedOnDate(input?.listenedOn);
+    const reviewText = assertOptionalReviewText(input?.reviewText, "reviewText");
 
     const duplicate = await this.backlogRepository.findDuplicateByUser(userId, albumId);
     if (duplicate?.id) {
-      throw new ValidationError("This album is already in your backlog.");
+      if (!reviewText) {
+        throw new ValidationError("This album is already in your backlog.");
+      }
+
+      const updated = await this.backlogRepository.updateById(duplicate.id, {
+        review_text: reviewText,
+        reviewed_at: new Date().toISOString(),
+      });
+      return mapItem(updated);
     }
 
     const created = await this.backlogRepository.create({
@@ -98,14 +129,45 @@ export class BacklogService {
       albumTitleRaw,
       status,
       rating,
+      reviewText,
+      reviewedAt: reviewText ? new Date().toISOString() : null,
       addedAt,
       source: "explore",
     });
     return mapItem(created);
   }
 
-  async updateRatingForUser(userId, backlogId, input) {
-    const rating = assertRating(input?.rating, "rating");
+  async updateForUser(userId, backlogId, input) {
+    const patch = {};
+    const hasReviewText = Object.prototype.hasOwnProperty.call(input ?? {}, "reviewText");
+    const hasClearReview = Object.prototype.hasOwnProperty.call(input ?? {}, "clearReview");
+
+    if (Object.prototype.hasOwnProperty.call(input ?? {}, "rating")) {
+      patch.rating = assertRating(input?.rating, "rating");
+    }
+    if (hasReviewText && hasClearReview) {
+      throw new ValidationError("Provide only one of: reviewText, clearReview.");
+    }
+    if (hasReviewText) {
+      const reviewText = assertOptionalReviewText(input?.reviewText, "reviewText");
+      if (!reviewText) {
+        throw new ValidationError("Field 'reviewText' cannot be null when provided.");
+      }
+      patch.review_text = reviewText;
+      patch.reviewed_at = new Date().toISOString();
+    }
+    if (hasClearReview) {
+      if (input?.clearReview !== true) {
+        throw new ValidationError("Field 'clearReview' must be true when provided.");
+      }
+      patch.review_text = null;
+      patch.reviewed_at = null;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      throw new ValidationError("Provide at least one editable field: rating, reviewText, clearReview.");
+    }
+
     const current = await this.backlogRepository.findById(backlogId);
     if (!current) {
       throw new ValidationError("Backlog item not found.");
@@ -114,7 +176,7 @@ export class BacklogService {
       throw new UnauthorizedError("You cannot modify another user's backlog item.");
     }
 
-    const updated = await this.backlogRepository.updateRating(backlogId, rating);
+    const updated = await this.backlogRepository.updateById(backlogId, patch);
     return mapItem(updated);
   }
 
