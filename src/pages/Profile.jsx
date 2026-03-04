@@ -15,8 +15,6 @@ import StatsSection from '../components/profile/StatsSection.jsx'
 import {
   friends,
   profileUser,
-  recentCarouselAlbums,
-  recentLogs,
   reviews,
 } from '../data/profileData.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
@@ -28,6 +26,48 @@ import {
   readCachedProfile,
   uploadCoverAndPersistUrl,
 } from '../lib/profileClient.js'
+
+const LOG_STATUSES = new Set(['completed', 'favorite'])
+
+function formatRelativeTime(value) {
+  if (!value) return 'just now'
+  const now = Date.now()
+  const then = new Date(value).getTime()
+  if (Number.isNaN(then)) return 'just now'
+
+  const diffMs = Math.max(0, now - then)
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+  const week = 7 * day
+  const month = 30 * day
+  const year = 365 * day
+
+  if (diffMs < minute) return 'just now'
+  if (diffMs < hour) {
+    const n = Math.floor(diffMs / minute)
+    return `${n} min${n === 1 ? '' : 's'} ago`
+  }
+  if (diffMs < day) {
+    const n = Math.floor(diffMs / hour)
+    return `${n}h ago`
+  }
+  if (diffMs < week) {
+    const n = Math.floor(diffMs / day)
+    return `${n}d ago`
+  }
+  if (diffMs < month) {
+    const n = Math.floor(diffMs / week)
+    return `${n}w ago`
+  }
+  if (diffMs < year) {
+    const n = Math.floor(diffMs / month)
+    return `${n}mo ago`
+  }
+
+  const n = Math.floor(diffMs / year)
+  return `${n}y ago`
+}
 
 function mapApiFavoritesToAlbums(payload) {
   const favorites = Array.isArray(payload?.favorites) ? payload.favorites : []
@@ -86,9 +126,11 @@ export default function Profile() {
   }))
   const user = profileView.user
   const [profileFavorites, setProfileFavorites] = useState([])
+  const [favoritesLoading, setFavoritesLoading] = useState(false)
+  const [recentCarousel, setRecentCarousel] = useState([])
+  const [recentActivityLogs, setRecentActivityLogs] = useState([])
   const favorites = profileFavorites
-  const recentCarousel = recentCarouselAlbums
-  const recent = recentLogs
+  const recent = recentActivityLogs
   const friendsList = friends
   const reviewList = reviews
 
@@ -127,7 +169,10 @@ export default function Profile() {
     if (!isSignedIn) {
       setBacklogPreview([])
       setLoggedAlbumsForEdit([])
+      setRecentCarousel([])
+      setRecentActivityLogs([])
       setProfileFavorites([])
+      setFavoritesLoading(false)
       return
     }
 
@@ -138,19 +183,55 @@ export default function Profile() {
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
         const authHeaders = await buildApiAuthHeaders()
-        const response = await fetch(`${apiBase}/api/backlog?page=1&limit=50`, {
-          headers: authHeaders,
-        })
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) {
-          throw new Error(payload?.error?.message ?? 'Failed to load backlog.')
+        const limit = 50
+        let page = 1
+        let total = 0
+        let allItems = []
+
+        while (!cancelled) {
+          const response = await fetch(`${apiBase}/api/backlog?page=${page}&limit=${limit}`, {
+            headers: authHeaders,
+          })
+          const payload = await response.json().catch(() => null)
+          if (!response.ok) {
+            throw new Error(payload?.error?.message ?? 'Failed to load backlog.')
+          }
+
+          const items = Array.isArray(payload?.items) ? payload.items : []
+          total = Number(payload?.total ?? 0)
+          allItems = allItems.concat(items)
+
+          if (items.length === 0 || allItems.length >= total) break
+          page += 1
         }
 
-        const items = Array.isArray(payload?.items) ? payload.items : []
+        const recentItems = allItems.map((item) => ({
+          title: item?.albumTitleRaw ?? 'Unknown album',
+          artist: item?.artistNameRaw ?? 'Unknown artist',
+          cover: item?.coverArtUrl || '/album/am.jpg',
+          rating: item?.rating ?? 0,
+          status: item?.status ?? 'pending',
+          addedAt: item?.addedAt ?? null,
+        }))
+        const latestLogs = allItems
+          .filter((item) => LOG_STATUSES.has(item?.status ?? 'pending'))
+          .slice(0, 3)
+          .map((item) => ({
+            title: item?.albumTitleRaw ?? 'Unknown album',
+            artist: item?.artistNameRaw ?? 'Unknown artist',
+            year: item?.addedAt ? String(new Date(item.addedAt).getUTCFullYear()) : 'Unknown year',
+            rating:
+              typeof item?.rating === 'number' ? item.rating.toFixed(1) : String(item?.rating ?? '0.0'),
+            note: '',
+            timeAgo: formatRelativeTime(item?.addedAt),
+          }))
+
         if (!cancelled) {
-          setBacklogPreview(items.slice(0, 5))
+          setBacklogPreview(allItems.slice(0, 5))
+          setRecentCarousel(recentItems)
+          setRecentActivityLogs(latestLogs)
           setLoggedAlbumsForEdit(
-            items.map((item) => ({
+            allItems.map((item) => ({
               title: item?.albumTitleRaw ?? 'Unknown album',
               artist: item?.artistNameRaw ?? 'Unknown artist',
               cover: item?.coverArtUrl || '',
@@ -162,6 +243,8 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setBacklogPreview([])
+          setRecentCarousel([])
+          setRecentActivityLogs([])
           setLoggedAlbumsForEdit([])
         }
       } finally {
@@ -180,12 +263,14 @@ export default function Profile() {
   useEffect(() => {
     if (!isSignedIn) {
       setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
+      setFavoritesLoading(false)
       return
     }
 
     let cancelled = false
 
     async function loadProfile() {
+      setFavoritesLoading(true)
       try {
         const [clientProfile, apiPayload] = await Promise.all([
           fetchCurrentProfile().catch(() => null),
@@ -229,6 +314,10 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
+        }
+      } finally {
+        if (!cancelled) {
+          setFavoritesLoading(false)
         }
       }
     }
@@ -448,10 +537,12 @@ export default function Profile() {
                   <aside className="flex flex-col gap-6 lg:col-span-8">
                     <FavoritesSection
                       favorites={favorites}
+                      isLoadingFavorites={favoritesLoading}
                       favoriteCovers={favoriteCovers}
                       favoriteRatings={favoriteRatings}
                       onFavoriteRatingChange={handleFavoriteRatingChange}
                       recentCarousel={recentCarousel}
+                      isLoadingRecent={backlogLoading}
                       recentRatings={recentRatings}
                       onRecentRatingChange={handleRecentRatingChange}
                     />

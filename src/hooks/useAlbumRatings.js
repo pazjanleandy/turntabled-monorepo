@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function useAlbumRatings(albums) {
   const initialRatings = useMemo(
@@ -13,6 +13,10 @@ export default function useAlbumRatings(albums) {
   );
 
   const [ratings, setRatings] = useState(() => initialRatings);
+
+  useEffect(() => {
+    setRatings(initialRatings);
+  }, [initialRatings]);
 
   const updateRating = (key, value) => {
     setRatings((prev) => ({
