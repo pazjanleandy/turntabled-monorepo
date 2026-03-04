@@ -6,6 +6,7 @@ export default function ProfileHeader({
   user,
   onEdit = () => {},
   onCoverUpload = async () => {},
+  allowProfileEditing = true,
   primaryActionLabel = 'Edit profile',
   avatarSrc = '',
   avatarAlt,
@@ -58,6 +59,7 @@ export default function ProfileHeader({
   const bio = user.bio
 
   const handleCoverEditClick = () => {
+    if (!allowProfileEditing) return
     if (coverUploadState.loading) return
     coverFileInputRef.current?.click()
   }
@@ -110,26 +112,30 @@ export default function ProfileHeader({
         )}
         <div className="pointer-events-none absolute inset-0 rounded-t-3xl bg-gradient-to-b from-black/0 via-black/0 to-black/20 transition duration-300 group-hover/cover:bg-black/25" />
 
-        <input
-          ref={coverFileInputRef}
-          type="file"
-          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-          className="hidden"
-          onChange={handleCoverFileChange}
-        />
+        {allowProfileEditing ? (
+          <>
+            <input
+              ref={coverFileInputRef}
+              type="file"
+              accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+              className="hidden"
+              onChange={handleCoverFileChange}
+            />
 
-        <button
-          type="button"
-          onClick={handleCoverEditClick}
-          disabled={coverUploadState.loading}
-          className="absolute inset-0 z-20 flex items-center justify-center rounded-t-3xl bg-black/0 transition duration-300 hover:bg-black/35 focus-visible:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-70"
-          aria-label="Upload cover photo"
-        >
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/45 px-3 py-2 text-xs font-semibold text-white opacity-0 backdrop-blur-sm transition duration-300 group-hover/cover:opacity-100 focus-visible:opacity-100">
-            <Camera size={14} weight="bold" />
-            {coverUploadState.loading ? 'Uploading...' : 'Edit cover'}
-          </span>
-        </button>
+            <button
+              type="button"
+              onClick={handleCoverEditClick}
+              disabled={coverUploadState.loading}
+              className="absolute inset-0 z-20 flex items-center justify-center rounded-t-3xl bg-black/0 transition duration-300 hover:bg-black/35 focus-visible:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-70"
+              aria-label="Upload cover photo"
+            >
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/45 px-3 py-2 text-xs font-semibold text-white opacity-0 backdrop-blur-sm transition duration-300 group-hover/cover:opacity-100 focus-visible:opacity-100">
+                <Camera size={14} weight="bold" />
+                {coverUploadState.loading ? 'Uploading...' : 'Edit cover'}
+              </span>
+            </button>
+          </>
+        ) : null}
 
         <div className="absolute bottom-0 left-4 z-20 translate-y-1/2 sm:left-8">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-accent/20 text-base font-semibold text-accent ring-4 ring-white shadow-md sm:h-24 sm:w-24 sm:text-lg">
@@ -201,14 +207,16 @@ export default function ProfileHeader({
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end md:w-auto md:flex-col md:items-end md:justify-start md:self-start">
-            <button
-              type="button"
-              className="inline-flex w-40 h-9 items-center justify-center gap-2 rounded-xl border border-orange-500/35 bg-accent px-4 text-[15px] font-semibold tracking-tight text-[#1f130c] shadow-sm transition hover:bg-[#ef6b2f] active:bg-[#e86124] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-              onClick={onEdit}
-            >
-              <PencilSimpleLine className="h-4 w-4" weight="bold" />
-              {primaryActionLabel}
-            </button>
+            {allowProfileEditing ? (
+              <button
+                type="button"
+                className="inline-flex w-40 h-9 items-center justify-center gap-2 rounded-xl border border-orange-500/35 bg-accent px-4 text-[15px] font-semibold tracking-tight text-[#1f130c] shadow-sm transition hover:bg-[#ef6b2f] active:bg-[#e86124] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                onClick={onEdit}
+              >
+                <PencilSimpleLine className="h-4 w-4" weight="bold" />
+                {primaryActionLabel}
+              </button>
+            ) : null}
             <button
               type="button"
               className="inline-flex w-40 h-9 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white/60 px-4 text-[15px] font-semibold tracking-tight text-black/80 shadow-none transition hover:bg-white active:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"

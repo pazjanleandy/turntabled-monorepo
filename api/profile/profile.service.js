@@ -1,4 +1,4 @@
-import { ValidationError } from "../_lib/errors.js";
+import { NotFoundError, ValidationError } from "../_lib/errors.js";
 
 function assertOptionalString(value, fieldName, { maxLength = 5000 } = {}) {
   if (value == null) return null;
@@ -63,6 +63,50 @@ function parseFavoriteBacklogIds(value) {
   return deduped;
 }
 
+function assertSearchQuery(value) {
+  if (typeof value !== "string") {
+    throw new ValidationError("Query param 'q' must be a string.");
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new ValidationError("Query param 'q' cannot be empty.");
+  }
+  if (normalized.length > 64) {
+    throw new ValidationError("Query param 'q' must be at most 64 characters.");
+  }
+  return normalized;
+}
+
+function normalizeUsername(username) {
+  if (typeof username !== "string") return "";
+  return username.trim().replace(/^@/, "");
+}
+
+function buildAvatarUrl(avatarPath, supabaseUrl) {
+  if (typeof avatarPath !== "string" || !avatarPath.trim()) return null;
+  const normalized = avatarPath.trim();
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    return normalized;
+  }
+
+  const base = typeof supabaseUrl === "string" ? supabaseUrl.replace(/\/+$/, "") : "";
+  if (!base) return null;
+  return `${base}/storage/v1/object/public/avatars/${normalized}`;
+}
+
+function resolvePublicAvatarUrl(userAvatarUrl, profileAvatarPath, supabaseUrl) {
+  const fromProfilePath = buildAvatarUrl(profileAvatarPath, supabaseUrl);
+  if (fromProfilePath) return fromProfilePath;
+
+  if (typeof userAvatarUrl === "string" && userAvatarUrl.trim()) {
+    return userAvatarUrl.trim();
+  }
+
+  return null;
+}
+
 function mapFavorite(row) {
   return {
     backlogId: row.id,
@@ -101,6 +145,27 @@ function mapReview(row) {
   };
 }
 
+function mapCompleted(row) {
+  return {
+    backlogId: row.id,
+    albumId: row.album_id,
+    status: row.status ?? null,
+    rating: row.rating ?? null,
+    isFavorite: Boolean(row.is_favorite),
+    reviewText: row.review_text ?? null,
+    reviewedAt: row.reviewed_at ?? null,
+    addedAt: row.added_at ?? null,
+    updatedAt: row.updated_at ?? null,
+    album: {
+      id: row?.album?.id ?? row.album_id,
+      title: row?.album?.title ?? row.album_title_raw ?? null,
+      artistName: row?.album?.artist?.name ?? row.artist_name_raw ?? null,
+      coverArtUrl: row?.album?.cover_art_url ?? null,
+      releaseId: row?.album?.mbid ?? null,
+    },
+  };
+}
+
 function mapProfile(user, favorites, reviews) {
   return {
     user: {
@@ -116,9 +181,25 @@ function mapProfile(user, favorites, reviews) {
   };
 }
 
+function mapPublicProfile(user, profileMedia, favorites, completed, reviews, supabaseUrl) {
+  return {
+    user: {
+      id: user.id,
+      username: user.username ?? null,
+      bio: user.bio ?? null,
+      avatarUrl: resolvePublicAvatarUrl(user.avatar_url, profileMedia?.avatar_path, supabaseUrl),
+      coverUrl: profileMedia?.cover_url ?? null,
+    },
+    favorites: favorites.map((item) => mapFavorite(item)),
+    completed: completed.map((item) => mapCompleted(item)),
+    reviews: reviews.map((item) => mapReview(item)),
+  };
+}
+
 export class ProfileService {
-  constructor({ profileRepository }) {
+  constructor({ profileRepository, supabaseUrl = "" }) {
     this.profileRepository = profileRepository;
+    this.supabaseUrl = supabaseUrl;
   }
 
   async getProfileForUser(userId) {
@@ -132,6 +213,66 @@ export class ProfileService {
       this.profileRepository.listReviewsByUser(userId),
     ]);
     return mapProfile(user, favorites, reviews);
+  }
+
+  async getPublicProfileForTarget(authenticatedUserId, target) {
+    const rawTargetUserId = typeof target?.userId === "string" ? target.userId.trim() : "";
+    const rawTargetUsername = normalizeUsername(target?.username);
+
+    if (!rawTargetUserId && !rawTargetUsername) {
+      throw new ValidationError("Provide one target identifier: userId or username.");
+    }
+
+    let user = null;
+    if (rawTargetUserId) {
+      user = await this.profileRepository.findPublicUserById(rawTargetUserId);
+    } else {
+      user = await this.profileRepository.findPublicUserByUsername(rawTargetUsername);
+    }
+
+    if (!user?.id) {
+      throw new NotFoundError("User profile not found.");
+    }
+
+    if (user.id === authenticatedUserId) {
+      throw new ValidationError("Use /api/profile to fetch the authenticated user's profile.");
+    }
+
+    const [profileMedia, favorites, completed, reviews] = await Promise.all([
+      this.profileRepository.findProfileMediaByUserId(user.id),
+      this.profileRepository.listFavoritesByUser(user.id),
+      this.profileRepository.listCompletedByUser(user.id),
+      this.profileRepository.listReviewsByUser(user.id),
+    ]);
+
+    return mapPublicProfile(user, profileMedia, favorites, completed, reviews, this.supabaseUrl);
+  }
+
+  async searchPublicUsersByUsername(authenticatedUserId, query, { limit = 20 } = {}) {
+    const normalizedQuery = assertSearchQuery(query);
+    const normalizedLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 50) : 20;
+
+    const rows = await this.profileRepository.searchUsersByUsername(normalizedQuery, {
+      excludeUserId: authenticatedUserId,
+      limit: normalizedLimit,
+    });
+    const profileMediaRows = await this.profileRepository.listProfileMediaByUserIds(
+      rows.map((row) => row.id).filter(Boolean)
+    );
+    const mediaByUserId = new Map(profileMediaRows.map((row) => [row.id, row]));
+
+    return {
+      query: normalizedQuery,
+      results: rows.map((row) => ({
+        id: row.id,
+        username: row.username ?? null,
+        avatarUrl: resolvePublicAvatarUrl(
+          row.avatar_url,
+          mediaByUserId.get(row.id)?.avatar_path ?? null,
+          this.supabaseUrl
+        ),
+      })),
+    };
   }
 
   async updateProfileForUser(userId, input) {

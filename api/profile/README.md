@@ -2,6 +2,9 @@
 
 ## Endpoints
 - `GET /api/profile`
+- `GET /api/profile/search?q=<partial-username>&limit=<1-50>`
+- `GET /api/profile/view?userId=<uuid>`
+- `GET /api/profile/view?username=<username>`
 - `PATCH /api/profile`
 - `PATCH /api/profile/favorites/:id`
 - `PUT /api/profile/favorites`
@@ -36,7 +39,41 @@
 ## Behavior
 - Users can only toggle favorites for backlog rows they own.
 - Bulk favorites validates all backlog IDs belong to the authenticated user.
+- `GET /api/profile/search` performs a case-insensitive partial username match and excludes the authenticated user.
+- `GET /api/profile/view` returns a public profile for another user (never the authenticated profile payload).
+- `GET /api/profile/view` returns `404 NOT_FOUND` when the target user does not exist.
 - All successful write endpoints return the full updated profile payload:
   - `user` info (`fullName`, `bio`, `avatarUrl`, etc.)
   - `favorites` list with joined album metadata.
   - `reviews` list sourced from backlog rows where `review_text` is not null, sorted by `reviewed_at` descending.
+
+## Read Models
+- `GET /api/profile/search` response shape:
+```json
+{
+  "query": "tim",
+  "results": [
+    {
+      "id": "uuid",
+      "username": "timo",
+      "avatarUrl": "https://..."
+    }
+  ]
+}
+```
+
+- `GET /api/profile/view` response shape (read-only):
+```json
+{
+  "user": {
+    "id": "uuid",
+    "username": "timo",
+    "bio": "public bio",
+    "avatarUrl": "https://...",
+    "coverUrl": "https://..."
+  },
+  "favorites": [],
+  "completed": [],
+  "reviews": []
+}
+```

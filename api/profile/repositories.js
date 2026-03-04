@@ -14,6 +14,68 @@ export class ProfileRepository {
     this.supabase = supabase;
   }
 
+  async findPublicUserById(userId) {
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("id,username,bio,avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+
+    handleDbError(error, "fetching public user profile by id");
+    return data;
+  }
+
+  async findPublicUserByUsername(username) {
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("id,username,bio,avatar_url")
+      .eq("username", username)
+      .maybeSingle();
+
+    handleDbError(error, "fetching public user profile by username");
+    return data;
+  }
+
+  async findProfileMediaByUserId(userId) {
+    const { data, error } = await this.supabase
+      .from("profiles")
+      .select("avatar_path,cover_url")
+      .eq("id", userId)
+      .maybeSingle();
+
+    handleDbError(error, "fetching profile media");
+    return data;
+  }
+
+  async listProfileMediaByUserIds(userIds) {
+    if (!Array.isArray(userIds) || userIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("profiles")
+      .select("id,avatar_path,cover_url")
+      .in("id", userIds);
+
+    handleDbError(error, "fetching profile media by user ids");
+    return data ?? [];
+  }
+
+  async searchUsersByUsername(query, { excludeUserId, limit = 20 } = {}) {
+    let builder = this.supabase
+      .from("users")
+      .select("id,username,avatar_url")
+      .ilike("username", `%${query}%`)
+      .order("username", { ascending: true })
+      .limit(limit);
+
+    if (excludeUserId) {
+      builder = builder.neq("id", excludeUserId);
+    }
+
+    const { data, error } = await builder;
+    handleDbError(error, "searching users by username");
+    return data ?? [];
+  }
+
   async findUserById(userId) {
     const { data, error } = await this.supabase
       .from("users")
@@ -73,6 +135,20 @@ export class ProfileRepository {
       .order("reviewed_at", { ascending: false, nullsFirst: false });
 
     handleDbError(error, "fetching reviews");
+    return data ?? [];
+  }
+
+  async listCompletedByUser(userId) {
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select(
+        "id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,title,cover_art_url,mbid,artist:artist_id(id,name))"
+      )
+      .eq("user_id", userId)
+      .in("status", ["completed", "favorite"])
+      .order("updated_at", { ascending: false });
+
+    handleDbError(error, "fetching completed/favorite backlog entries");
     return data ?? [];
   }
 

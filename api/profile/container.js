@@ -7,7 +7,10 @@ export function buildProfileContainer() {
   const env = getProfileEnv();
   const supabase = getSupabaseAdminClient(env);
   const profileRepository = new ProfileRepository(supabase);
-  const profileService = new ProfileService({ profileRepository });
+  const profileService = new ProfileService({
+    profileRepository,
+    supabaseUrl: env.SUPABASE_URL,
+  });
 
   return {
     env,

@@ -20,6 +20,12 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class NotFoundError extends AppError {
+  constructor(message = "Not found") {
+    super(message, 404, "NOT_FOUND");
+  }
+}
+
 export class ExternalApiError extends AppError {
   constructor(message, statusCode = 502, details = null) {
     super(message, statusCode, "EXTERNAL_API_ERROR", details);

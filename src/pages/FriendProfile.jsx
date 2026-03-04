@@ -1,8 +1,8 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
-import FriendsSection from '../components/profile/FriendsSection.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
@@ -10,65 +10,206 @@ import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
 import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
-import { findFriendBySlug, friends, reviews } from '../data/profileData.js'
+import useAuthStatus from '../hooks/useAuthStatus.js'
+import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+
+function createInitials(value = '') {
+  const normalized = value.trim()
+  if (!normalized) return 'U'
+  return normalized.slice(0, 2).toUpperCase()
+}
+
+function formatRelativeTime(value) {
+  if (!value) return 'just now'
+  const now = Date.now()
+  const then = new Date(value).getTime()
+  if (Number.isNaN(then)) return 'just now'
+
+  const diffMs = Math.max(0, now - then)
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+
+  if (diffMs < minute) return 'just now'
+  if (diffMs < hour) {
+    const n = Math.floor(diffMs / minute)
+    return `${n} min${n === 1 ? '' : 's'} ago`
+  }
+  if (diffMs < day) {
+    const n = Math.floor(diffMs / hour)
+    return `${n}h ago`
+  }
+  const n = Math.floor(diffMs / day)
+  return `${n}d ago`
+}
+
+function mapFavoriteAlbums(items = []) {
+  return items.map((item) => ({
+    backlogId: item?.backlogId ?? null,
+    title: item?.album?.title ?? 'Unknown album',
+    artist: item?.album?.artistName ?? 'Unknown artist',
+    cover: item?.album?.coverArtUrl || '/album/am.jpg',
+    releaseId: item?.album?.releaseId ?? null,
+    rating: item?.rating ?? 0,
+  }))
+}
+
+function mapCompletedToRecent(items = []) {
+  return items.map((item) => ({
+    title: item?.album?.title ?? 'Unknown album',
+    artist: item?.album?.artistName ?? 'Unknown artist',
+    year: '',
+    note: '',
+    rating:
+      typeof item?.rating === 'number'
+        ? item.rating.toFixed(1)
+        : '0.0',
+    timeAgo: formatRelativeTime(item?.updatedAt ?? item?.addedAt),
+  }))
+}
+
+function mapCompletedToCarousel(items = []) {
+  return items.slice(0, 5).map((item) => ({
+    title: item?.album?.title ?? 'Unknown album',
+    artist: item?.album?.artistName ?? 'Unknown artist',
+    cover: item?.album?.coverArtUrl || '/album/am.jpg',
+    rating: item?.rating ?? 0,
+  }))
+}
+
+function toTimestamp(value) {
+  const parsed = Date.parse(value ?? '')
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function mergePublicActivity({ completed = [], favorites = [], reviews = [] }) {
+  const merged = new Map()
+
+  const push = (item) => {
+    const id = item?.backlogId
+    if (!id) return
+
+    const existing = merged.get(id)
+    const nextTimestamp = Math.max(
+      toTimestamp(item?.updatedAt),
+      toTimestamp(item?.reviewedAt),
+      toTimestamp(item?.addedAt),
+    )
+
+    if (!existing) {
+      merged.set(id, { ...item, _sortTime: nextTimestamp })
+      return
+    }
+
+    const prevTimestamp = existing._sortTime ?? 0
+    if (nextTimestamp >= prevTimestamp) {
+      merged.set(id, { ...existing, ...item, _sortTime: nextTimestamp })
+    } else {
+      merged.set(id, { ...item, ...existing, _sortTime: prevTimestamp })
+    }
+  }
+
+  completed.forEach(push)
+  favorites.forEach(push)
+  reviews.forEach(push)
+
+  return Array.from(merged.values()).sort((a, b) => (b._sortTime ?? 0) - (a._sortTime ?? 0))
+}
+
+function mapReviews(items = []) {
+  return items.map((item) => ({
+    backlogId: item?.backlogId ?? null,
+    title: item?.album?.title ?? 'Unknown album',
+    artist: item?.album?.artistName ?? 'Unknown artist',
+    cover: item?.album?.coverArtUrl || '/album/am.jpg',
+    reviewText: item?.reviewText ?? '',
+    rating: item?.rating ?? 0,
+    reviewedAt: item?.reviewedAt ?? null,
+  }))
+}
 
 export default function FriendProfile() {
+  const { isSignedIn } = useAuthStatus()
   const { friendSlug } = useParams()
-  const friend = findFriendBySlug(friendSlug)
-  const safeFriend = friend ?? {
-    slug: 'unknown',
-    name: 'Unknown User',
-    handle: '@unknown',
-    bio: '',
-    location: '',
-    joined: '',
-    note: '',
-    activity: '',
-    avatarSrc: '/profile/rainy.jpg',
-    bannerSrc: '/hero/hero1.jpg',
-    lastfmUsername: '',
-    favoriteAlbums: [],
-    recentLogs: [],
-  }
+  const targetUserId = friendSlug ?? ''
 
-  const user = {
-    name: safeFriend.name,
-    handle: safeFriend.handle,
-    bio: safeFriend.bio,
-    location: safeFriend.location,
-    joined: safeFriend.joined,
-  }
+  const [payload, setPayload] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const favorites = safeFriend.favoriteAlbums.map((album, index) => ({
-    ...album,
-    cover: album.cover || '/album/am.jpg',
-    rating:
-      typeof album.rating === 'number'
-        ? album.rating
-        : Math.max(3.5, 4.5 - index * 0.5),
-  }))
+  useEffect(() => {
+    let cancelled = false
 
-  const recentCarousel = safeFriend.favoriteAlbums.slice(0, 5).map((album, index) => ({
-    ...album,
-    cover: album.cover || '/album/am.jpg',
-    rating:
-      typeof album.rating === 'number'
-        ? album.rating
-        : Math.max(3.0, 4.5 - index * 0.5),
-  }))
+    async function loadProfile() {
+      if (!targetUserId) {
+        setPayload(null)
+        setError('Profile not found.')
+        setIsLoading(false)
+        return
+      }
 
-  const recent = safeFriend.recentLogs.map((entry) => ({
-    ...entry,
-    year: entry.year || '',
-    note: safeFriend.note,
-    rating:
-      typeof entry.rating === 'number'
-        ? entry.rating.toFixed(1)
-        : entry.rating ?? '4.0',
-  }))
+      if (!isSignedIn) {
+        setPayload(null)
+        setError('Sign in to view user profiles.')
+        setIsLoading(false)
+        return
+      }
 
-  const friendsList = friends.filter((item) => item.slug !== safeFriend.slug).slice(0, 5)
-  const reviewList = reviews
+      setIsLoading(true)
+      setError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const headers = await buildApiAuthHeaders()
+        const response = await fetch(
+          `${apiBase}/api/profile/view?userId=${encodeURIComponent(targetUserId)}`,
+          { headers },
+        )
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(result?.error?.message ?? 'Failed to load profile.')
+        }
+
+        if (cancelled) return
+        setPayload(result)
+      } catch (loadError) {
+        if (cancelled) return
+        setPayload(null)
+        setError(loadError?.message ?? 'Failed to load profile.')
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isSignedIn, targetUserId])
+
+  const favorites = useMemo(
+    () => mapFavoriteAlbums(Array.isArray(payload?.favorites) ? payload.favorites : []),
+    [payload],
+  )
+  const publicActivity = useMemo(
+    () =>
+      mergePublicActivity({
+        completed: Array.isArray(payload?.completed) ? payload.completed : [],
+        favorites: Array.isArray(payload?.favorites) ? payload.favorites : [],
+        reviews: Array.isArray(payload?.reviews) ? payload.reviews : [],
+      }),
+    [payload],
+  )
+  const recentCarousel = useMemo(() => mapCompletedToCarousel(publicActivity), [publicActivity])
+  const recent = useMemo(() => mapCompletedToRecent(publicActivity), [publicActivity])
+  const reviewList = useMemo(
+    () => mapReviews(Array.isArray(payload?.reviews) ? payload.reviews : []),
+    [payload],
+  )
 
   const favoriteCovers = useAlbumCovers(favorites)
   const { ratings: favoriteRatings, updateRating: handleFavoriteRatingChange } =
@@ -76,18 +217,46 @@ export default function FriendProfile() {
   const { ratings: recentRatings, updateRating: handleRecentRatingChange } =
     useAlbumRatings(recentCarousel)
 
-  const backlogPreview = safeFriend.favoriteAlbums.slice(0, 5).map((album, index) => ({
-    id: `${safeFriend.slug}-${index}`,
-    albumTitleRaw: album.title,
-    artistNameRaw: album.artist,
-    coverArtUrl: album.cover || '/album/am.jpg',
-    rating:
-      typeof album.rating === 'number'
-        ? album.rating
-        : Math.max(3.5, 4.5 - index * 0.5),
-  }))
+  const user = useMemo(() => {
+    const username = payload?.user?.username?.trim() || 'unknown'
+    return {
+      name: username,
+      handle: `@${username.replace(/^@/, '')}`,
+      bio: payload?.user?.bio?.trim() || 'No bio added yet.',
+      location: 'Public profile',
+      joined: 'Member',
+      initials: createInitials(username),
+    }
+  }, [payload])
 
-  if (!friend) {
+  const backlogPreview = useMemo(
+    () =>
+      publicActivity.slice(0, 5).map((item, index) => ({
+        id: item?.backlogId ?? `${targetUserId}-${index}`,
+        albumTitleRaw: item?.album?.title ?? 'Unknown album',
+        artistNameRaw: item?.album?.artistName ?? 'Unknown artist',
+        coverArtUrl: item?.album?.coverArtUrl || '/album/am.jpg',
+        rating: item?.rating ?? 0,
+      })),
+    [publicActivity, targetUserId],
+  )
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="space-y-6">
+            <Navbar className="w-full" />
+            <section className="card vinyl-texture border border-black/5 shadow-sm">
+              <p className="mb-0 text-sm text-slate-600">Loading profile...</p>
+            </section>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
     return (
       <div className="min-h-screen">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
@@ -97,10 +266,8 @@ export default function FriendProfile() {
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                 Friends
               </p>
-              <h1 className="mb-2 text-2xl text-text">Profile not found</h1>
-              <p className="mb-4 text-sm text-slate-600">
-                This friend profile does not exist in the mock data.
-              </p>
+              <h1 className="mb-2 text-2xl text-text">Profile unavailable</h1>
+              <p className="mb-4 text-sm text-slate-600">{error}</p>
               <Link
                 to="/friends"
                 className="inline-flex rounded-xl border border-black/10 bg-white/85 px-4 py-2 text-sm font-semibold text-text shadow-sm transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
@@ -124,11 +291,10 @@ export default function FriendProfile() {
               <section className="py-0">
                 <ProfileHeader
                   embedded
+                  allowProfileEditing={false}
                   user={user}
-                  avatarSrc={friend.avatarSrc}
-                  bannerSrc={friend.bannerSrc}
-                  primaryActionLabel="Unfollow"
-                  onEdit={() => {}}
+                  avatarSrc={payload?.user?.avatarUrl || '/profile/rainy.jpg'}
+                  bannerSrc={payload?.user?.coverUrl || '/hero/hero1.jpg'}
                 />
               </section>
 
@@ -158,11 +324,11 @@ export default function FriendProfile() {
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
                             Backlog
                           </p>
-                          <h3 className="mb-0 text-lg text-text">Saved albums</h3>
+                          <h3 className="mb-0 text-lg text-text">Completed albums</h3>
                         </div>
                       </div>
                       {backlogPreview.length === 0 ? (
-                        <p className="mb-0 text-sm text-slate-600">No backlog items yet.</p>
+                        <p className="mb-0 text-sm text-slate-600">No completed items yet.</p>
                       ) : (
                         <ul className="divide-y divide-black/5">
                           {backlogPreview.map((item) => (
@@ -192,7 +358,6 @@ export default function FriendProfile() {
                     </section>
 
                     <LatestLogsSection recent={recent} asCard={false} />
-                    <FriendsSection friends={friendsList} asCard={false} />
                   </aside>
                 </div>
               </section>

@@ -16,6 +16,8 @@ import {
 } from 'phosphor-react'
 import BackButton from '../components/BackButton.jsx'
 import Navbar from '../components/Navbar.jsx'
+import useAuthStatus from '../hooks/useAuthStatus.js'
+import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 import { friends, profileUser } from '../data/profileData.js'
 
 const VIEW_MODE_STORAGE_KEY = 'turntabled:friends:view-mode'
@@ -285,9 +287,90 @@ function FriendGridCard({ friend }) {
   )
 }
 
+function SearchResultAvatar({ user, sizeClass = 'h-11 w-11' }) {
+  const username = typeof user?.username === 'string' ? user.username.trim() : ''
+  const initials = username ? username.slice(0, 2).toUpperCase() : 'U'
+
+  return (
+    <div
+      className={[
+        'relative shrink-0 overflow-hidden rounded-full border border-orange-500/20 bg-accent/15',
+        sizeClass,
+      ].join(' ')}
+    >
+      <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-accent">
+        {initials}
+      </span>
+      {user?.avatarUrl ? (
+        <img
+          src={user.avatarUrl}
+          alt={`${username || 'User'} avatar`}
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(event) => {
+            event.currentTarget.style.display = 'none'
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function SearchResultRow({ user, onNavigate }) {
+  return (
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={() => onNavigate(user.id)}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onNavigate(user.id)
+        }
+      }}
+      className="group rounded-2xl border border-black/5 bg-white/50 p-4 shadow-sm backdrop-blur transition duration-200 ease-out hover:-translate-y-0.5 hover:border-black/12 hover:shadow-md active:translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+      aria-label={`View @${user.username} profile`}
+    >
+      <div className="flex items-center gap-3 sm:gap-4">
+        <SearchResultAvatar user={user} />
+        <div className="min-w-0 flex-1">
+          <p className="mb-0 truncate text-base font-semibold text-black/85">
+            @{user.username || 'unknown'}
+          </p>
+          <p className="mb-0 mt-1 text-sm text-black/55">Public profile</p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function SearchResultGridCard({ user }) {
+  return (
+    <Link
+      to={`/friends/${user.id}`}
+      className="group relative rounded-2xl border border-black/5 bg-white/50 p-4 shadow-sm backdrop-blur transition duration-200 ease-out hover:-translate-y-0.5 hover:border-black/12 hover:shadow-md active:translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+    >
+      <div className="flex items-center gap-3">
+        <SearchResultAvatar user={user} sizeClass="h-12 w-12" />
+        <div className="min-w-0">
+          <p className="mb-0 truncate text-base font-semibold text-black/85">
+            @{user.username || 'unknown'}
+          </p>
+          <p className="mb-0 truncate text-sm text-black/55">Public profile</p>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 export default function Friends() {
+  const { isSignedIn } = useAuthStatus()
   const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const [sortBy, setSortBy] = useState('recent')
   const [filters, setFilters] = useState({
     nowSpinning: false,
@@ -313,8 +396,80 @@ export default function Friends() {
     }
   }, [filters.sameCity, homeCity])
 
+  useEffect(() => {
+    const next = searchTerm.trim()
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchTerm(next)
+    }, 300)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [searchTerm])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function runSearch() {
+      if (!debouncedSearchTerm) {
+        setSearchResults([])
+        setSearchError('')
+        setSearchLoading(false)
+        return
+      }
+
+      if (!isSignedIn) {
+        setSearchResults([])
+        setSearchError('Sign in to search users.')
+        setSearchLoading(false)
+        return
+      }
+
+      setSearchLoading(true)
+      setSearchError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const headers = await buildApiAuthHeaders()
+        const query = encodeURIComponent(debouncedSearchTerm)
+        const response = await fetch(`${apiBase}/api/profile/search?q=${query}`, { headers })
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(payload?.error?.message ?? 'Failed to search users.')
+        }
+
+        const rows = Array.isArray(payload?.results) ? payload.results : []
+        if (cancelled) return
+        setSearchResults(
+          rows.map((row) => ({
+            id: row?.id ?? '',
+            username: row?.username ?? '',
+            avatarUrl: row?.avatarUrl || '',
+          })),
+        )
+      } catch (error) {
+        if (cancelled) return
+        setSearchResults([])
+        setSearchError(error?.message ?? 'Failed to search users.')
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false)
+        }
+      }
+    }
+
+    runSearch()
+
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedSearchTerm, isSignedIn])
+
+  const hasSearchQuery = searchTerm.trim().length > 0
+
   const filteredFriends = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase()
+    const query = hasSearchQuery ? '' : searchTerm.trim().toLowerCase()
 
     return friends.filter((friend) => {
       const searchableText = [friend.name, friend.handle, friend.location]
@@ -329,7 +484,7 @@ export default function Friends() {
 
       return true
     })
-  }, [filters, homeCity, searchTerm])
+  }, [filters, hasSearchQuery, homeCity, searchTerm])
 
   const sortedFriends = useMemo(() => {
     const items = [...filteredFriends]
@@ -369,7 +524,9 @@ export default function Friends() {
   }, [sortedFriends])
 
   const hasNoFriends = friends.length === 0
-  const hasNoResults = !hasNoFriends && sortedFriends.length === 0
+  const hasNoResults = hasSearchQuery
+    ? !searchLoading && !searchError && searchResults.length === 0
+    : !hasNoFriends && sortedFriends.length === 0
   const hasActiveFilters = Object.values(filters).some(Boolean)
 
   const handleClearSearchAndFilters = () => {
@@ -419,9 +576,9 @@ export default function Friends() {
                   type="search"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by name, handle, or location"
+                  placeholder="Search users by username"
                   className="h-10 w-full rounded-xl border border-black/10 bg-white/70 pl-9 pr-3 text-sm text-black/80 transition duration-200 ease-out placeholder:text-black/40 hover:border-black/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-                  aria-label="Search friends by name, handle, or location"
+                  aria-label="Search users by username"
                 />
               </label>
 
@@ -502,7 +659,44 @@ export default function Friends() {
             </div>
           </section>
 
-          {hasNoFriends ? (
+          {hasSearchQuery ? (
+            searchLoading ? (
+              <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
+                <p className="mb-0 text-sm text-black/60">Searching users...</p>
+              </section>
+            ) : searchError ? (
+              <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
+                <h2 className="mb-1 text-xl font-semibold text-black/85">Search unavailable</h2>
+                <p className="mb-0 text-sm text-black/60">{searchError}</p>
+              </section>
+            ) : hasNoResults ? (
+              <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl border border-dashed border-black/20 bg-white/70">
+                  <MagnifyingGlass className="h-8 w-8 text-black/40" />
+                </div>
+                <h2 className="mb-1 text-xl font-semibold text-black/85">
+                  No users found for "{searchTerm.trim()}"
+                </h2>
+                <p className="mb-0 text-sm text-black/60">Try a different username query.</p>
+              </section>
+            ) : viewMode === 'list' ? (
+              <section className="space-y-2">
+                {searchResults.map((user) => (
+                  <SearchResultRow
+                    key={user.id}
+                    user={user}
+                    onNavigate={(id) => navigate(`/friends/${id}`)}
+                  />
+                ))}
+              </section>
+            ) : (
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {searchResults.map((user) => (
+                  <SearchResultGridCard key={user.id} user={user} />
+                ))}
+              </section>
+            )
+          ) : hasNoFriends ? (
             <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
               <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl border border-dashed border-black/20 bg-white/70">
                 <Users className="h-8 w-8 text-black/40" />
