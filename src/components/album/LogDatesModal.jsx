@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Calendar, CaretDown, Star, X } from 'phosphor-react'
 import { buildApiAuthHeaders } from '../../lib/apiAuth.js'
+import CoverImage from '../CoverImage.jsx'
 
 const statusOptions = [
-  { value: 'completed', label: 'Completed', dotClass: 'bg-emerald-400' },
+  { value: 'listened', label: 'Listened', dotClass: 'bg-emerald-400' },
   { value: 'listening', label: 'Listening', dotClass: 'bg-blue-500' },
   { value: 'unfinished', label: 'Unfinished', dotClass: 'bg-amber-500' },
-  { value: 'pending', label: 'Pending', dotClass: 'bg-slate-400' },
-  { value: 'favorite', label: 'Favorite', dotClass: 'bg-rose-400' },
+  { value: 'backloggd', label: 'Backloggd', dotClass: 'bg-slate-400' },
 ]
 
 export default function LogDatesModal({
@@ -20,7 +20,7 @@ export default function LogDatesModal({
   onSaved = null,
 }) {
   const [isStatusOpen, setIsStatusOpen] = useState(false)
-  const [selectedStatus, setSelectedStatus] = useState('pending')
+  const [selectedStatus, setSelectedStatus] = useState('backloggd')
   const [selectedRating, setSelectedRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
   const [reviewText, setReviewText] = useState('')
@@ -46,7 +46,7 @@ export default function LogDatesModal({
   useEffect(() => {
     if (!isOpen) return
     setIsStatusOpen(false)
-    setSelectedStatus('pending')
+    setSelectedStatus('backloggd')
     setSelectedRating(0)
     setHoverRating(0)
     setReviewText('')
@@ -117,10 +117,10 @@ export default function LogDatesModal({
       >
         <div className="flex items-start justify-between gap-4">
           <div className="grid flex-1 gap-4 sm:grid-cols-[120px_minmax(0,1fr)]">
-            <img
+            <CoverImage
               src={albumArt || '/album/am.jpg'}
-              alt={`${albumTitle || 'Album'} cover`}
-              className="h-[120px] w-[120px] rounded-2xl border border-black/5 object-cover shadow-[0_12px_24px_-18px_rgba(15,15,15,0.35)]"
+              alt={`${albumTitle || 'Album'} by ${albumArtist || 'Unknown artist'} cover`}
+              className="h-[120px] w-[120px] border border-black/5 shadow-[0_12px_24px_-18px_rgba(15,15,15,0.35)]"
             />
             <div className="min-w-0">
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">

@@ -7,8 +7,8 @@ function RecentReviewCard({ title, artist, year, rating, timeAgo, cover }) {
       <div className="flex items-center gap-3">
         <CoverImage
           src={cover}
-          alt={`${title} cover`}
-          className="h-12 w-12 flex-shrink-0 object-cover"
+          alt={`${title} by ${artist} cover`}
+          className="h-12 w-12 flex-shrink-0"
         />
         <div className="min-w-0">
           <p className="mb-1 truncate text-sm font-semibold text-text">

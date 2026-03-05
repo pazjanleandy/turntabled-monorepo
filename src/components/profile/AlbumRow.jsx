@@ -1,37 +1,34 @@
-import { Star } from 'phosphor-react'
+import CoverImage from '../CoverImage.jsx'
 
 export default function AlbumRow({
   title,
   artist,
-  year,
+  cover,
   rating,
-  note,
   timeAgo,
   elevated = true,
 }) {
   const rowClass = elevated
-    ? 'flex items-center gap-3 rounded-2xl border border-black/5 bg-white/80 p-3 shadow-sm'
-    : 'flex items-center gap-3 rounded-xl border border-black/5 bg-white/35 p-3'
+    ? 'flex items-center gap-3 rounded-2xl border border-black/5 bg-white/80 px-3 py-2.5 shadow-sm'
+    : 'flex items-center gap-3 rounded-xl border border-black/5 bg-white/55 px-3 py-2.5'
 
   return (
     <div className={rowClass}>
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/10 bg-gradient-to-br from-white via-orange-50 to-slate-100">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-          Log
-        </span>
+      <div className="h-12 w-12 shrink-0 overflow-hidden border border-black/10 bg-black/5">
+        <CoverImage
+          src={cover || '/album/am.jpg'}
+          alt={`${title || 'Album'} by ${artist || 'Unknown artist'} cover`}
+          className="h-full w-full"
+        />
       </div>
       <div className="min-w-0 flex-1">
         <p className="mb-0 truncate text-sm font-semibold text-text">{title}</p>
-        <p className="mb-0 truncate text-xs text-slate-600">
-          {artist} - {year}
-        </p>
-        {note ? <p className="mb-0 mt-1 line-clamp-1 text-xs text-slate-600">{note}</p> : null}
+        <p className="mb-0 truncate text-xs text-slate-600">{artist}</p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <div className="flex items-center gap-1 text-accent">
-          <Star className="h-4 w-4 fill-current" />
-          <span className="text-sm font-semibold text-text">{rating}</span>
-        </div>
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+          {rating ?? 0}/5
+        </span>
         <span className="text-[11px] text-slate-600">{timeAgo}</span>
       </div>
     </div>

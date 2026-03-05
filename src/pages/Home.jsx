@@ -10,8 +10,8 @@ import { ChatCircle, Headphones, Heart, PlusCircle, UserPlus } from 'phosphor-re
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
-const LOG_STATUSES = new Set(['completed', 'favorite'])
-const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'pending'])
+const LOG_STATUSES = new Set(['listened'])
+const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'backloggd'])
 
 function formatRelativeTime(value) {
   if (!value) return 'just now'
@@ -197,7 +197,7 @@ export default function Home() {
           album: item.albumTitleRaw ?? 'Unknown Album',
           cover: item.coverArtUrl || '/album/am.jpg',
           rating: item.rating ?? 0,
-          status: item.status ?? 'pending',
+          status: item.status ?? 'backloggd',
           addedAt: item.addedAt ?? null,
         }))
 

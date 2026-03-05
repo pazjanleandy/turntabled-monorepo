@@ -1,7 +1,13 @@
 import { getExploreEnv } from "../_lib/config/env.js";
 import { RedisRestClient } from "../_lib/redis-rest.js";
 import { getSupabaseAdminClient } from "../_lib/supabase-admin.js";
-import { AlbumRepository, ArtistRepository, BacklogRepository } from "./repositories.js";
+import {
+  AlbumRepository,
+  ArtistRepository,
+  BacklogRepository,
+  ProfileMediaRepository,
+  UserRepository,
+} from "./repositories.js";
 import { ExploreService } from "./explore.service.js";
 import { MusicBrainzClient } from "./musicbrainz.client.js";
 import { MusicBrainzWorkerService } from "./musicbrainz-worker.service.js";
@@ -18,6 +24,8 @@ export function buildExploreContainer() {
   const backlogRepository = new BacklogRepository(supabase);
   const artistRepository = new ArtistRepository(supabase);
   const albumRepository = new AlbumRepository(supabase);
+  const userRepository = new UserRepository(supabase);
+  const profileMediaRepository = new ProfileMediaRepository(supabase);
   const queueService = new RateLimitQueueService(redis);
   const musicBrainzClient = new MusicBrainzClient(env);
 
@@ -25,8 +33,11 @@ export function buildExploreContainer() {
     backlogRepository,
     albumRepository,
     artistRepository,
+    userRepository,
+    profileMediaRepository,
     queueService,
     musicBrainzClient,
+    supabaseUrl: env.SUPABASE_URL,
   });
 
   const workerService = new MusicBrainzWorkerService({

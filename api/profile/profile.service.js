@@ -222,10 +222,13 @@ export class ProfileService {
     if (!rawTargetUserId && !rawTargetUsername) {
       throw new ValidationError("Provide one target identifier: userId or username.");
     }
+    const normalizedTargetUserId = rawTargetUserId
+      ? assertUuidLike(rawTargetUserId, "userId")
+      : "";
 
     let user = null;
-    if (rawTargetUserId) {
-      user = await this.profileRepository.findPublicUserById(rawTargetUserId);
+    if (normalizedTargetUserId) {
+      user = await this.profileRepository.findPublicUserById(normalizedTargetUserId);
     } else {
       user = await this.profileRepository.findPublicUserByUsername(rawTargetUsername);
     }

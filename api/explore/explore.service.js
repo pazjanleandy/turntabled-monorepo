@@ -2,6 +2,8 @@ import { makeResourceKey } from "./normalize.js";
 
 function mapExploreAlbumItem(album) {
   const coverArtUrl = album?.cover_art_url ?? (album?.mbid ? `https://coverartarchive.org/release/${album.mbid}/front-500` : null);
+  const secondaryTypes = Array.isArray(album?.secondary_types) ? album.secondary_types : [];
+  const genres = secondaryTypes.filter((value) => typeof value === "string" && value.trim());
   return {
     backlogId: null,
     status: null,
@@ -9,6 +11,9 @@ function mapExploreAlbumItem(album) {
     artistName: album?.artist?.name ?? "Unknown Artist",
     albumTitle: album?.title ?? "Unknown Album",
     coverArtUrl,
+    releaseDate: album?.release_date ?? null,
+    genres: genres.length > 0 ? genres : [],
+    primaryType: typeof album?.primary_type === "string" ? album.primary_type : null,
     hydrated: true,
     albumId: album?.id ?? null,
     lastSyncedAt: album?.last_synced_at ?? null,
@@ -21,13 +26,49 @@ function parseNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function buildAvatarUrl(avatarPath, supabaseUrl) {
+  if (typeof avatarPath !== "string" || !avatarPath.trim()) return null;
+  const normalized = avatarPath.trim();
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    return normalized;
+  }
+
+  const base = typeof supabaseUrl === "string" ? supabaseUrl.replace(/\/+$/, "") : "";
+  if (!base) return null;
+  return `${base}/storage/v1/object/public/avatars/${normalized}`;
+}
+
+function resolvePublicAvatarUrl(userAvatarUrl, profileAvatarPath, supabaseUrl) {
+  const fromProfilePath = buildAvatarUrl(profileAvatarPath, supabaseUrl);
+  if (fromProfilePath) return fromProfilePath;
+
+  if (typeof userAvatarUrl === "string" && userAvatarUrl.trim()) {
+    return userAvatarUrl.trim();
+  }
+
+  return null;
+}
+
 export class ExploreService {
-  constructor({ backlogRepository, albumRepository, artistRepository, queueService, musicBrainzClient }) {
+  constructor({
+    backlogRepository,
+    albumRepository,
+    artistRepository,
+    userRepository,
+    profileMediaRepository,
+    queueService,
+    musicBrainzClient,
+    supabaseUrl = "",
+  }) {
     this.backlogRepository = backlogRepository;
     this.albumRepository = albumRepository;
     this.artistRepository = artistRepository;
+    this.userRepository = userRepository ?? { findPublicByIds: async () => [] };
+    this.profileMediaRepository = profileMediaRepository ?? { listByUserIds: async () => [] };
     this.queueService = queueService;
     this.musicBrainzClient = musicBrainzClient;
+    this.supabaseUrl = supabaseUrl;
   }
 
   async getExplorePage(userId, page, limit) {
@@ -104,8 +145,11 @@ export class ExploreService {
   async getAlbumDetails(id) {
     const fromAlbum = await this.albumRepository.findDetailedById(id);
     if (fromAlbum) {
-      const tracks = await this.getTracklistForAlbumSafe(fromAlbum);
-      return this.mapAlbumDetails(fromAlbum, null, tracks);
+      const [tracks, reviews] = await Promise.all([
+        this.getTracklistForAlbumSafe(fromAlbum),
+        this.getAlbumReviews({ album: fromAlbum }),
+      ]);
+      return this.mapAlbumDetails(fromAlbum, null, tracks, reviews);
     }
 
     const backlogItem = await this.backlogRepository.findById(id);
@@ -136,15 +180,64 @@ export class ExploreService {
         createdAt: new Date().toISOString(),
       };
       await this.queueService.enqueueIfMissing(job);
-      return this.mapAlbumDetails(null, backlogItem, []);
+      const reviews = await this.getAlbumReviews({ backlogItem });
+      return this.mapAlbumDetails(null, backlogItem, [], reviews);
     }
 
     if (backlogItem.album_id !== album.id) {
       await this.backlogRepository.attachAlbum(backlogItem.id, album.id);
     }
 
-    const tracks = await this.getTracklistForAlbumSafe(album);
-    return this.mapAlbumDetails(album, backlogItem, tracks);
+    const [tracks, reviews] = await Promise.all([
+      this.getTracklistForAlbumSafe(album),
+      this.getAlbumReviews({ album, backlogItem }),
+    ]);
+    return this.mapAlbumDetails(album, backlogItem, tracks, reviews);
+  }
+
+  async getAlbumReviews({ album = null, backlogItem = null, limit = 25 } = {}) {
+    const rows = await this.backlogRepository.listReviewsForAlbum({
+      albumId: album?.id ?? null,
+      artistNameRaw: backlogItem?.artist_name_raw ?? album?.artist?.name ?? null,
+      albumTitleRaw: backlogItem?.album_title_raw ?? album?.title ?? null,
+      limit,
+    });
+
+    const reviews = (Array.isArray(rows) ? rows : []).filter((row) => {
+      return typeof row?.review_text === "string" && row.review_text.trim();
+    });
+
+    if (reviews.length === 0) return [];
+
+    const userIds = [...new Set(reviews.map((row) => row?.user_id).filter((value) => typeof value === "string" && value.trim()))];
+    const [users, profileMediaRows] = await Promise.all([
+      this.userRepository.findPublicByIds(userIds),
+      this.profileMediaRepository.listByUserIds(userIds),
+    ]);
+    const usersById = new Map((users ?? []).map((user) => [user.id, user]));
+    const profileMediaById = new Map((profileMediaRows ?? []).map((item) => [item.id, item]));
+
+    return reviews.map((row) => {
+      const user = usersById.get(row.user_id);
+      const media = profileMediaById.get(row.user_id);
+      const username =
+        typeof user?.username === "string" && user.username.trim() ? user.username.trim() : "unknown-user";
+
+      return {
+        backlogId: row.id,
+        albumId: row.album_id,
+        rating: row.rating ?? null,
+        reviewText: row.review_text ?? null,
+        reviewedAt: row.reviewed_at ?? null,
+        addedAt: row.added_at ?? null,
+        updatedAt: row.updated_at ?? null,
+        user: {
+          id: row.user_id ?? null,
+          username,
+          avatarUrl: resolvePublicAvatarUrl(user?.avatar_url, media?.avatar_path, this.supabaseUrl),
+        },
+      };
+    });
   }
 
   async getTracklistForAlbumSafe(album) {
@@ -172,7 +265,7 @@ export class ExploreService {
     return Array.isArray(tracks) ? tracks : [];
   }
 
-  mapAlbumDetails(album, backlogItem, tracks = []) {
+  mapAlbumDetails(album, backlogItem, tracks = [], reviews = []) {
     const title = album?.title ?? backlogItem?.album_title_raw ?? "Unknown Album";
     const artistName = album?.artist?.name ?? backlogItem?.artist_name_raw ?? "Unknown Artist";
     const releaseDate = album?.release_date ?? null;
@@ -195,6 +288,7 @@ export class ExploreService {
       type: album?.primary_type ?? "Album",
       genres: secondaryTypes.length > 0 ? secondaryTypes : ["Unknown"],
       tracks: Array.isArray(tracks) ? tracks : [],
+      reviews: Array.isArray(reviews) ? reviews : [],
       hydrated: Boolean(album),
     };
   }

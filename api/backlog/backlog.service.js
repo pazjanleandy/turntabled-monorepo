@@ -1,5 +1,22 @@
 import { UnauthorizedError, ValidationError } from "../_lib/errors.js";
 
+const ALLOWED_STATUSES = ["listened", "listening", "unfinished", "backloggd"];
+const LEGACY_STATUS_MAP = {
+  completed: "listened",
+  pending: "backloggd",
+  favorite: "listened",
+};
+
+function normalizeStatusForRead(value) {
+  if (typeof value !== "string" || !value.trim()) return "backloggd";
+  const normalized = value.trim().toLowerCase();
+  if (ALLOWED_STATUSES.includes(normalized)) return normalized;
+  if (Object.prototype.hasOwnProperty.call(LEGACY_STATUS_MAP, normalized)) {
+    return LEGACY_STATUS_MAP[normalized];
+  }
+  return "backloggd";
+}
+
 function assertString(value, fieldName) {
   if (typeof value !== "string" || !value.trim()) {
     throw new ValidationError(`Field '${fieldName}' is required and must be a non-empty string.`);
@@ -24,9 +41,8 @@ function assertRating(value, fieldName = "rating") {
 }
 
 function assertStatus(value) {
-  const allowed = ["completed", "listening", "unfinished", "pending", "favorite"];
-  if (typeof value !== "string" || !allowed.includes(value)) {
-    throw new ValidationError("Field 'status' must be one of: completed, listening, unfinished, pending, favorite.");
+  if (typeof value !== "string" || !ALLOWED_STATUSES.includes(value)) {
+    throw new ValidationError("Field 'status' must be one of: listened, listening, unfinished, backloggd.");
   }
   return value;
 }
@@ -62,13 +78,21 @@ function assertOptionalReviewText(value, fieldName = "reviewText") {
   return trimmed;
 }
 
+function assertOptionalBoolean(value, fieldName) {
+  if (value == null) return null;
+  if (typeof value !== "boolean") {
+    throw new ValidationError(`Field '${fieldName}' must be a boolean.`);
+  }
+  return value;
+}
+
 function mapItem(row) {
   return {
     id: row.id,
     albumId: row.album_id,
     artistNameRaw: row.artist_name_raw,
     albumTitleRaw: row.album_title_raw,
-    status: row.status ?? "pending",
+    status: normalizeStatusForRead(row.status),
     rating: row.rating,
     isFavorite: Boolean(row.is_favorite),
     reviewText: row.review_text ?? null,
@@ -104,21 +128,33 @@ export class BacklogService {
     const albumId = assertUuidLike(input?.albumId, "albumId");
     const artistNameRaw = assertString(input?.artistNameRaw, "artistNameRaw");
     const albumTitleRaw = assertString(input?.albumTitleRaw, "albumTitleRaw");
-    const status = assertStatus(input?.status ?? "pending");
+    const status = assertStatus(input?.status ?? "backloggd");
     const rating = assertRating(input?.rating, "rating");
+    const requestedIsFavorite = assertOptionalBoolean(input?.isFavorite, "isFavorite");
+    const isFavorite = requestedIsFavorite === true;
+    const normalizedStatus = status;
     const addedAt = parseListenedOnDate(input?.listenedOn);
     const reviewText = assertOptionalReviewText(input?.reviewText, "reviewText");
 
     const duplicate = await this.backlogRepository.findDuplicateByUser(userId, albumId);
     if (duplicate?.id) {
-      if (!reviewText) {
+      if (!reviewText && !isFavorite) {
         throw new ValidationError("This album is already in your backlog.");
       }
 
-      const updated = await this.backlogRepository.updateById(duplicate.id, {
-        review_text: reviewText,
-        reviewed_at: new Date().toISOString(),
-      });
+      const patch = {};
+
+      if (reviewText) {
+        patch.review_text = reviewText;
+        patch.reviewed_at = new Date().toISOString();
+      }
+
+      if (isFavorite) {
+        patch.is_favorite = true;
+        patch.status = "listened";
+      }
+
+      const updated = await this.backlogRepository.updateById(duplicate.id, patch);
       return mapItem(updated);
     }
 
@@ -127,8 +163,9 @@ export class BacklogService {
       albumId,
       artistNameRaw,
       albumTitleRaw,
-      status,
+      status: normalizedStatus,
       rating,
+      isFavorite,
       reviewText,
       reviewedAt: reviewText ? new Date().toISOString() : null,
       addedAt,

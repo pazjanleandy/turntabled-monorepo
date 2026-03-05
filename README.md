@@ -40,9 +40,8 @@ Why two terminals:
 - `/home` signed-in home feed
 - `/profile` profile page
 - `/explore` explore page
-- `/backlog` backlog page
+- `/backlog` logged albums page (`Albums` in navbar)
 - `/artists` artists listing
-- `/favorites` favorites page
 - `/activity` activity/logged albums page
 - `/friends` friends/connections hub
 - `/friends/:friendSlug` friend profile page
@@ -162,6 +161,47 @@ Why two terminals:
 Use `.env.example` as the template.
 
 ## Recent Changes We Made
+
+### Mar 5, 2026
+
+- Profile media flow overhaul:
+  - added avatar and banner resize/crop modals
+  - wired uploads through backend profile media endpoints
+  - unified preview + save behavior in edit profile
+- Profile header and edit UX polish:
+  - improved avatar/banner overlap and header hierarchy
+  - removed profile location line
+  - renamed `About` label to `Bio`
+  - removed banner hover-edit overlay from profile header
+- Favorites and profile updates:
+  - favorites now reflected from logged/favorite actions
+  - `Manage` now opens drag-and-drop reorder modal
+  - removed standalone `/favorites` page
+  - removed star row from `Top albums` favorites strip
+- Logged page redesign:
+  - transformed backlog UI into cover-first `Logged` layout
+  - added toolbar filtering/sorting and overflow actions per tile
+  - updated header with identity/count layout refinements
+  - switched toolbar filter label from `Source` to `Status`
+  - status model aligned to: `listened`, `listening`, `unfinished`, `backloggd`
+- Artists directory refactor:
+  - rebuilt as dense A-Z directory with grouped letter sections
+  - sticky A-Z rail (desktop + mobile variants) with active/disabled letters
+  - search/sort improvements, skeleton loading, and empty states
+- Explore page refactor:
+  - moved to cover-browser style auto-fill square grid
+  - aligned tile format with logged cover cards (cover-first)
+  - added decade + genre dropdowns below search (plus existing sort dropdown)
+  - exposed release/genre metadata in explore API payload for filtering
+- Album page enhancements:
+  - added `Favorite` action in album log card
+  - added `Community reviews` section under tracklist
+  - each review now shows reviewer avatar, username, rating, and review text
+  - backend now resolves album-level reviews and reviewer profile media
+- Navbar/branding adjustments:
+  - reverted brand mark to Phosphor icon
+  - switched `Albums` nav icon to `Disc`
+  - removed temporary `public/logo` assets
 
 ### Mar 3, 2026
 

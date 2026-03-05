@@ -33,8 +33,8 @@ export default function ReviewRow({
     <article className={rowClass}>
       <CoverImage
         src={cover}
-        alt={`${title} cover`}
-        className="h-16 w-16 flex-shrink-0 rounded-xl border border-black/10 object-cover"
+        alt={`${title} by ${artist} cover`}
+        className="h-16 w-16 flex-shrink-0 border border-black/10"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">

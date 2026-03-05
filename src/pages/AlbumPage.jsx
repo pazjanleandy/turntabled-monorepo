@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { CalendarPlus, NotePencil, Star } from "phosphor-react";
+import { CalendarPlus, Heart, NotePencil, Star } from "phosphor-react";
 import Navbar from "../components/Navbar.jsx";
 import NavbarGuest from "../components/NavbarGuest.jsx";
 import BackButton from "../components/BackButton.jsx";
@@ -14,7 +14,14 @@ import { supabase } from "../supabase.js";
 
 const BACKLOG_UPDATED_EVENT_NAME = "turntabled:backlog-updated";
 
-function LogCard({ onLogDates, onWriteReview, disabled }) {
+function LogCard({
+  onLogDates,
+  onWriteReview,
+  onFavorite,
+  isFavorited = false,
+  favoriteBusy = false,
+  disabled,
+}) {
   return (
     <div className="rounded-2xl border border-black/5 bg-white/80 p-4 shadow-[0_18px_36px_-26px_rgba(15,15,15,0.35)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -29,6 +36,26 @@ function LogCard({ onLogDates, onWriteReview, disabled }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed ${
+              isFavorited
+                ? "border-orange-500/35 bg-accent/15 text-accent hover:bg-accent/20 disabled:opacity-100"
+                : "border-black/5 bg-white/90 text-text hover:bg-white disabled:opacity-50"
+            }`}
+            onClick={onFavorite}
+            disabled={disabled || favoriteBusy || isFavorited}
+            title={
+              disabled
+                ? "Login required"
+                : isFavorited
+                  ? "Already in favorites"
+                  : "Add to favorites"
+            }
+          >
+            <Heart size={14} weight={isFavorited ? "fill" : "bold"} />
+            {favoriteBusy ? "Saving..." : isFavorited ? "Favorited" : "Favorite"}
+          </button>
           <button
             type="button"
             className="inline-flex items-center gap-2 rounded-full border border-black/5 bg-white/90 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -59,16 +86,83 @@ function LogCard({ onLogDates, onWriteReview, disabled }) {
   );
 }
 
+function formatReviewDate(value) {
+  if (!value) return "Recently";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Recently";
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getReviewerInitials(username = "") {
+  const normalized = String(username).trim().replace(/^@/, "");
+  if (!normalized) return "U";
+  return normalized.slice(0, 2).toUpperCase();
+}
+
+function AlbumReviewCard({ review }) {
+  const username =
+    typeof review?.user?.username === "string" && review.user.username.trim()
+      ? review.user.username.trim()
+      : "unknown-user";
+  const profilePath =
+    username && username !== "unknown-user" ? `/friends/${encodeURIComponent(username)}` : null;
+  const ratingValue = typeof review?.rating === "number" ? review.rating : 0;
+
+  return (
+    <article className="flex items-start gap-3 py-4">
+      <div className="mt-0.5">
+        {review?.user?.avatarUrl ? (
+          <img
+            src={review.user.avatarUrl}
+            alt={`${username} avatar`}
+            className="h-10 w-10 rounded-full border border-black/10 object-cover"
+          />
+        ) : (
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-accent/15 text-xs font-semibold uppercase text-accent">
+            {getReviewerInitials(username)}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="mb-0 text-sm text-muted">Review by</p>
+          {profilePath ? (
+            <Link
+              to={profilePath}
+              className="text-sm font-semibold text-text transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+            >
+              @{username.replace(/^@/, "")}
+            </Link>
+          ) : (
+            <p className="mb-0 text-sm font-semibold text-text">@{username.replace(/^@/, "")}</p>
+          )}
+          <StarRating value={ratingValue} readOnly size={13} />
+          <span className="text-xs font-semibold text-muted">{ratingValue}/5</span>
+          <span className="text-xs text-muted">{formatReviewDate(review?.reviewedAt ?? review?.addedAt)}</span>
+        </div>
+        <p className="mb-0 mt-2 whitespace-pre-wrap text-sm text-slate-700">{review?.reviewText}</p>
+      </div>
+    </article>
+  );
+}
+
 export default function AlbumPage() {
   const { releaseId } = useParams();
   const { isSignedIn } = useAuthStatus();
   const [album, setAlbum] = useState(null);
+  const [albumRefreshKey, setAlbumRefreshKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [isLogDatesOpen, setIsLogDatesOpen] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [logNotice, setLogNotice] = useState("");
   const [backlogItem, setBacklogItem] = useState(null);
+  const [isFavoriteSaving, setIsFavoriteSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,13 +214,14 @@ export default function AlbumPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [releaseId]);
+  }, [releaseId, albumRefreshKey]);
 
   const safeAlbum = useMemo(() => {
     if (!album) return null;
     return {
       ...album,
       tracks: Array.isArray(album.tracks) ? album.tracks : [],
+      reviews: Array.isArray(album.reviews) ? album.reviews : [],
       genres: Array.isArray(album.genres) ? album.genres : ["Unknown"],
     };
   }, [album]);
@@ -172,14 +267,88 @@ export default function AlbumPage() {
     window.dispatchEvent(new CustomEvent(BACKLOG_UPDATED_EVENT_NAME));
   };
 
-  const handleBacklogSaved = (item, notice) => {
+  const handleBacklogSaved = (item, notice, { refreshAlbum = false } = {}) => {
     setBacklogItem(item ?? null);
     if (notice) {
       setLogNotice(notice);
       window.setTimeout(() => setLogNotice(""), 2200);
     }
+    if (refreshAlbum) {
+      setAlbumRefreshKey((current) => current + 1);
+    }
     emitBacklogUpdated();
   };
+
+  const handleFavoriteClick = async () => {
+    if (!isSignedIn || !safeAlbum?.id || isFavoriteSaving) return;
+    if (backlogItem?.isFavorite) return;
+
+    setIsFavoriteSaving(true);
+    try {
+      const apiBase = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL ?? "";
+      const authHeaders = await buildApiAuthHeaders();
+      let item = backlogItem;
+
+      if (!item?.id) {
+        const createResponse = await fetch(`${apiBase}/api/backlog`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+          },
+          body: JSON.stringify({
+            albumId: safeAlbum.id,
+            artistNameRaw: safeAlbum.artist,
+            albumTitleRaw: safeAlbum.title,
+            status: "listened",
+            rating: 5,
+            isFavorite: true,
+          }),
+        });
+        const createPayload = await createResponse.json().catch(() => null);
+        if (!createResponse.ok) {
+          throw new Error(createPayload?.error?.message ?? "Failed to add album to favorites.");
+        }
+        item = createPayload?.item ?? null;
+      }
+
+      if (item?.id && !item?.isFavorite) {
+        const favoriteResponse = await fetch(
+          `${apiBase}/api/profile/favorites?id=${encodeURIComponent(item.id)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeaders,
+            },
+            body: JSON.stringify({ isFavorite: true }),
+          },
+        );
+        const favoritePayload = await favoriteResponse.json().catch(() => null);
+        if (!favoriteResponse.ok) {
+          throw new Error(favoritePayload?.error?.message ?? "Failed to add album to favorites.");
+        }
+      }
+
+      handleBacklogSaved(
+        item
+          ? {
+              ...item,
+              isFavorite: true,
+              status: item.status || "listened",
+            }
+          : null,
+        "Added to favorites",
+      );
+    } catch (error) {
+      setLogNotice(error?.message ?? "Unable to add album to favorites.");
+      window.setTimeout(() => setLogNotice(""), 2400);
+    } finally {
+      setIsFavoriteSaving(false);
+    }
+  };
+
+  const isAlbumFavorited = Boolean(backlogItem?.isFavorite);
 
   if (isLoading) {
     return (
@@ -239,14 +408,17 @@ export default function AlbumPage() {
             <div className="min-w-0">
               <CoverImage
                 src={safeAlbum.cover || "/album/am.jpg"}
-                alt={`${safeAlbum.title} cover`}
-                className="aspect-square w-full max-w-[220px] rounded-2xl object-cover shadow-[0_14px_28px_-22px_rgba(15,15,15,0.35)]"
+                alt={`${safeAlbum.title} by ${safeAlbum.artist} cover`}
+                className="w-full max-w-[220px] shadow-[0_14px_28px_-22px_rgba(15,15,15,0.35)]"
               />
 
               <div className="mt-4 lg:hidden">
                 <LogCard
                   onLogDates={() => setIsLogDatesOpen(true)}
                   onWriteReview={() => setIsReviewOpen(true)}
+                  onFavorite={handleFavoriteClick}
+                  isFavorited={isAlbumFavorited}
+                  favoriteBusy={isFavoriteSaving}
                   disabled={!isSignedIn}
                 />
               </div>
@@ -295,6 +467,9 @@ export default function AlbumPage() {
               <LogCard
                 onLogDates={() => setIsLogDatesOpen(true)}
                 onWriteReview={() => setIsReviewOpen(true)}
+                onFavorite={handleFavoriteClick}
+                isFavorited={isAlbumFavorited}
+                favoriteBusy={isFavoriteSaving}
                 disabled={!isSignedIn}
               />
             </aside>
@@ -337,6 +512,35 @@ export default function AlbumPage() {
             </ul>
           )}
         </section>
+
+        <section className="card vinyl-texture">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                Reviews
+              </p>
+              <h2 className="mb-0 text-xl text-text">Community reviews</h2>
+            </div>
+            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+              {safeAlbum.reviews.length} review{safeAlbum.reviews.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          {safeAlbum.reviews.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-sm text-muted">
+              No reviews yet. Be the first to review this album.
+            </div>
+          ) : (
+            <div className="mt-2 divide-y divide-black/5">
+              {safeAlbum.reviews.map((review) => (
+                <AlbumReviewCard
+                  key={review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`}
+                  review={review}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       {logNotice ? (
@@ -353,7 +557,7 @@ export default function AlbumPage() {
         albumArtist={safeAlbum?.artist}
         albumArt={safeAlbum?.cover}
         onSaved={(item) => {
-          handleBacklogSaved(item, "Review saved")
+          handleBacklogSaved(item, "Review saved", { refreshAlbum: true })
         }}
       />
       <ReviewModal
@@ -363,7 +567,7 @@ export default function AlbumPage() {
         albumTitle={safeAlbum?.title}
         initialReviewText={backlogItem?.reviewText ?? ''}
         onSaved={(item) => {
-          handleBacklogSaved(item, "Review updated")
+          handleBacklogSaved(item, "Review updated", { refreshAlbum: true })
         }}
       />
     </div>

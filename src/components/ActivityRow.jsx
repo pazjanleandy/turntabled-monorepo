@@ -22,8 +22,8 @@ export default function ActivityRow({ icon, text, meta, cover, compact = false }
       {cover ? (
         <CoverImage
           src={cover}
-          alt="album cover"
-          className={`rounded-soft object-cover shadow-subtle ${coverClasses}`}
+          alt={`${text} cover`}
+          className={`shadow-subtle ${coverClasses}`}
         />
       ) : null}
     </div>

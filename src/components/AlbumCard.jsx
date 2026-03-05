@@ -1,7 +1,7 @@
 import { Badge } from './Card.jsx'
 import CoverImage from './CoverImage.jsx'
 
-export function AlbumCover({ title, tone, cover, size = 'md' }) {
+export function AlbumCover({ title, artist = '', tone, cover, size = 'md' }) {
   const sizeClass = size === 'sm' ? 'h-14 w-14' : 'h-24 w-24'
   const tileStyles =
     size === 'tile' ? 'w-full' : sizeClass
@@ -10,8 +10,8 @@ export function AlbumCover({ title, tone, cover, size = 'md' }) {
     return (
       <CoverImage
         src={cover}
-        alt={`${title} cover`}
-        className={`shrink-0 rounded-soft object-cover shadow-subtle ${tileStyles}`}
+        alt={artist ? `${title} by ${artist} cover` : `${title} cover`}
+        className={`shrink-0 shadow-subtle ${tileStyles}`}
         style={tileRatio}
       />
     )
@@ -19,7 +19,7 @@ export function AlbumCover({ title, tone, cover, size = 'md' }) {
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-soft ${tileStyles}`}
+      className={`flex shrink-0 items-center justify-center ${tileStyles}`}
       style={{
         ...tileRatio,
         background: `linear-gradient(135deg, hsl(${tone} / 0.25), hsl(${tone} / 0.75))`,
@@ -40,7 +40,7 @@ export function AlbumCard({ album, artist, year, tone, cover }) {
   return (
     <article className="rounded-soft bg-white/85 p-3 shadow-subtle transition hover:-translate-y-0.5 hover:bg-white">
       <div className="space-y-3">
-        <AlbumCover title={album} tone={tone} cover={cover} size="tile" />
+        <AlbumCover title={album} artist={artist} tone={tone} cover={cover} size="tile" />
         <div>
           <p className="mb-0 text-sm font-semibold text-text">{album}</p>
           <p className="mb-0 text-xs text-muted">{artist}</p>
@@ -55,7 +55,7 @@ export function CompactAlbumRow({ album, artist, tone, meta, cover }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-soft bg-white/80 px-3 py-2 shadow-subtle">
       <div className="flex items-center gap-3">
-        <AlbumCover title={album} tone={tone} cover={cover} size="md" />
+        <AlbumCover title={album} artist={artist} tone={tone} cover={cover} size="md" />
         <div>
           <p className="mb-0 text-sm font-semibold text-text">{album}</p>
           <p className="mb-0 text-xs text-muted">{artist}</p>

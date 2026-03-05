@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { BookOpen, Compass, House, MusicNotes, SignOut } from 'phosphor-react'
+import { Compass, Disc, House, MusicNotes, SignOut } from 'phosphor-react'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import {
   emitProfileUpdated,
@@ -91,8 +91,8 @@ export default function Navbar({ className = '' }) {
           Explore
         </NavLink>
         <NavLink to="/backlog" className={navItemClass}>
-          <BookOpen size={14} weight="bold" className="transition" />
-          My Backlog
+          <Disc size={14} weight="bold" className="transition" />
+          Albums
         </NavLink>
         <NavLink to="/artists" className={navItemClass}>
           <MusicNotes size={14} weight="bold" className="transition" />
@@ -135,17 +135,6 @@ export default function Navbar({ className = '' }) {
               }
             >
               Profile
-            </NavLink>
-            <NavLink
-              to="/favorites"
-              className={({ isActive }) =>
-                [
-                  'flex items-center justify-between rounded-xl px-3 py-2 transition hover:bg-black/5',
-                  isActive ? 'text-accent' : 'text-slate-900',
-                ].join(' ')
-              }
-            >
-              Favorites
             </NavLink>
             <NavLink
               to="/activity"

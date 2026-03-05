@@ -70,6 +70,37 @@ export class BacklogRepository {
 
     handleDbError(error, "attaching backlog item to album");
   }
+
+  async listReviewsForAlbum({ albumId, artistNameRaw, albumTitleRaw, limit = 25 }) {
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 25;
+
+    let query = this.supabase
+      .from("backlog")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,rating,review_text,reviewed_at,added_at,updated_at"
+      )
+      .not("review_text", "is", null)
+      .order("reviewed_at", { ascending: false, nullsFirst: false })
+      .order("updated_at", { ascending: false })
+      .limit(safeLimit);
+
+    if (typeof albumId === "string" && albumId.trim()) {
+      query = query.eq("album_id", albumId.trim());
+    } else if (
+      typeof artistNameRaw === "string" &&
+      artistNameRaw.trim() &&
+      typeof albumTitleRaw === "string" &&
+      albumTitleRaw.trim()
+    ) {
+      query = query.eq("artist_name_raw", artistNameRaw.trim()).eq("album_title_raw", albumTitleRaw.trim());
+    } else {
+      return [];
+    }
+
+    const { data, error } = await query;
+    handleDbError(error, "fetching album reviews");
+    return data ?? [];
+  }
 }
 
 export class ArtistRepository {
@@ -124,7 +155,7 @@ export class AlbumRepository {
     const { data, error, count } = await this.supabase
       .from("album")
       .select(
-        "id,mbid,title,release_date,primary_type,cover_art_url,last_synced_at,artist:artist_id(id,name)",
+        "id,mbid,title,release_date,primary_type,secondary_types,cover_art_url,last_synced_at,artist:artist_id(id,name)",
         { count: "exact" }
       )
       .order("last_synced_at", { ascending: false, nullsFirst: false })
@@ -303,5 +334,41 @@ export class AlbumRepository {
     });
 
     return grouped.slice(from, to + 1);
+  }
+}
+
+export class UserRepository {
+  constructor(supabase) {
+    this.supabase = supabase;
+  }
+
+  async findPublicByIds(userIds) {
+    if (!Array.isArray(userIds) || userIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("id,username,avatar_url")
+      .in("id", userIds);
+
+    handleDbError(error, "fetching users by ids");
+    return data ?? [];
+  }
+}
+
+export class ProfileMediaRepository {
+  constructor(supabase) {
+    this.supabase = supabase;
+  }
+
+  async listByUserIds(userIds) {
+    if (!Array.isArray(userIds) || userIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("profiles")
+      .select("id,avatar_path")
+      .in("id", userIds);
+
+    handleDbError(error, "fetching profile media by user ids");
+    return data ?? [];
   }
 }

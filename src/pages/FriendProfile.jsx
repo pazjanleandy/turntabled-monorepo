@@ -13,6 +13,12 @@ import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
+function isUuidLike(value = '') {
+  const normalized = String(value).trim()
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidPattern.test(normalized)
+}
+
 function createInitials(value = '') {
   const normalized = value.trim()
   if (!normalized) return 'U'
@@ -131,7 +137,7 @@ function mapReviews(items = []) {
 export default function FriendProfile() {
   const { isSignedIn } = useAuthStatus()
   const { friendSlug } = useParams()
-  const targetUserId = friendSlug ?? ''
+  const targetIdentifier = friendSlug ?? ''
 
   const [payload, setPayload] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -141,7 +147,8 @@ export default function FriendProfile() {
     let cancelled = false
 
     async function loadProfile() {
-      if (!targetUserId) {
+      const normalizedTarget = targetIdentifier.trim()
+      if (!normalizedTarget) {
         setPayload(null)
         setError('Profile not found.')
         setIsLoading(false)
@@ -161,8 +168,11 @@ export default function FriendProfile() {
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
         const headers = await buildApiAuthHeaders()
+        const targetQuery = isUuidLike(normalizedTarget)
+          ? `userId=${encodeURIComponent(normalizedTarget)}`
+          : `username=${encodeURIComponent(normalizedTarget.replace(/^@/, ''))}`
         const response = await fetch(
-          `${apiBase}/api/profile/view?userId=${encodeURIComponent(targetUserId)}`,
+          `${apiBase}/api/profile/view?${targetQuery}`,
           { headers },
         )
         const result = await response.json().catch(() => null)
@@ -189,7 +199,7 @@ export default function FriendProfile() {
     return () => {
       cancelled = true
     }
-  }, [isSignedIn, targetUserId])
+  }, [isSignedIn, targetIdentifier])
 
   const favorites = useMemo(
     () => mapFavoriteAlbums(Array.isArray(payload?.favorites) ? payload.favorites : []),
@@ -232,13 +242,13 @@ export default function FriendProfile() {
   const backlogPreview = useMemo(
     () =>
       publicActivity.slice(0, 5).map((item, index) => ({
-        id: item?.backlogId ?? `${targetUserId}-${index}`,
+        id: item?.backlogId ?? `${targetIdentifier}-${index}`,
         albumTitleRaw: item?.album?.title ?? 'Unknown album',
         artistNameRaw: item?.album?.artistName ?? 'Unknown artist',
         coverArtUrl: item?.album?.coverArtUrl || '/album/am.jpg',
         rating: item?.rating ?? 0,
       })),
-    [publicActivity, targetUserId],
+    [publicActivity, targetIdentifier],
   )
 
   if (isLoading) {
@@ -333,11 +343,11 @@ export default function FriendProfile() {
                         <ul className="divide-y divide-black/5">
                           {backlogPreview.map((item) => (
                             <li key={item.id} className="flex items-center gap-3 py-2.5">
-                              <div className="h-12 w-12 overflow-hidden rounded-xl border border-black/10 bg-black/5">
+                              <div className="h-12 w-12 overflow-hidden border border-black/10 bg-black/5">
                                 <CoverImage
                                   src={item.coverArtUrl || '/album/am.jpg'}
-                                  alt={`${item.albumTitleRaw} cover`}
-                                  className="h-full w-full object-cover"
+                                  alt={`${item.albumTitleRaw} by ${item.artistNameRaw} cover`}
+                                  className="h-full w-full"
                                 />
                               </div>
                               <div className="min-w-0 flex-1">

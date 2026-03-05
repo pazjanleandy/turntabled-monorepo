@@ -5,7 +5,6 @@ import Profile from './pages/Profile.jsx'
 import ArtistProfile from './pages/ArtistProfile.jsx'
 import Explore from './pages/Explore.jsx'
 import Backlog from './pages/Backlog.jsx'
-import Favorites from './pages/Favorites.jsx'
 import Activity from './pages/Activity.jsx'
 import Friends from './pages/Friends.jsx'
 import FriendProfile from './pages/FriendProfile.jsx'
@@ -23,7 +22,6 @@ function App() {
         <Route path="/explore" element={<Explore />} />
         <Route path="/backlog" element={<Backlog />} />
         <Route path="/artists" element={<Artists />} />
-        <Route path="/favorites" element={<Favorites />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/friends" element={<Friends />} />
         <Route path="/friends/:friendSlug" element={<FriendProfile />} />

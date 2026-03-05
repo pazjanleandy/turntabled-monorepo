@@ -6,6 +6,8 @@
 - `GET /api/profile/view?userId=<uuid>`
 - `GET /api/profile/view?username=<username>`
 - `PATCH /api/profile`
+- `POST /api/profile/avatar`
+- `POST /api/profile/cover`
 - `PATCH /api/profile/favorites/:id`
 - `PUT /api/profile/favorites`
 
@@ -29,6 +31,22 @@
 }
 ```
 
+- `POST /api/profile/avatar`
+```json
+{
+  "mimeType": "image/jpeg",
+  "dataUrl": "data:image/jpeg;base64,..."
+}
+```
+
+- `POST /api/profile/cover`
+```json
+{
+  "mimeType": "image/jpeg",
+  "dataUrl": "data:image/jpeg;base64,..."
+}
+```
+
 - `PUT /api/profile/favorites`
 ```json
 {
@@ -39,6 +57,9 @@
 ## Behavior
 - Users can only toggle favorites for backlog rows they own.
 - Bulk favorites validates all backlog IDs belong to the authenticated user.
+- Bulk favorites preserve order using the `favoriteBacklogIds` array order.
+- Avatar uploads must be PNG or JPEG and at most 2MB after base64 decode.
+- Cover uploads must be PNG or JPEG and at most 5MB after base64 decode.
 - `GET /api/profile/search` performs a case-insensitive partial username match and excludes the authenticated user.
 - `GET /api/profile/view` returns a public profile for another user (never the authenticated profile payload).
 - `GET /api/profile/view` returns `404 NOT_FOUND` when the target user does not exist.

@@ -18,7 +18,8 @@
   "albumId": "uuid",
   "artistNameRaw": "Artist Name",
   "albumTitleRaw": "Album Title",
-  "status": "pending",
+  "status": "backloggd",
+  "isFavorite": false,
   "listenedOn": "2026-02-24",
   "rating": 4,
   "reviewText": "Great album front to back."
@@ -28,6 +29,7 @@
 Behavior:
 - If no row exists for `(user_id, album_id)`: creates backlog row.
 - If row exists and `reviewText` is provided: updates `review_text` and `reviewed_at` on that row.
+- If row exists and `isFavorite: true` is provided: marks row as favorite.
 
 - `PATCH /api/backlog/:id`
 ```json
@@ -39,7 +41,8 @@ Behavior:
 
 ## Validation
 - `rating` must be an integer in `[1,5]` when provided.
-- `status` must be one of `completed|listening|unfinished|pending|favorite`.
+- `status` must be one of `listened|listening|unfinished|backloggd`.
+- `isFavorite` (optional) must be boolean when provided.
 - `listenedOn` (optional) must be `YYYY-MM-DD`.
 - `reviewText` (optional in payload) cannot be empty or whitespace-only.
 - Users can only read/update/delete their own backlog entries from API endpoints.

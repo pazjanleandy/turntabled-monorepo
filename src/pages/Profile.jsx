@@ -6,6 +6,7 @@ import LastFmConnectButton from '../components/LastFmConnectButton.jsx'
 import ReviewModal from '../components/album/ReviewModal.jsx'
 import EditProfileModal from '../components/profile/EditProfileModal.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
+import FavoritesReorderModal from '../components/profile/FavoritesReorderModal.jsx'
 import FriendsSection from '../components/profile/FriendsSection.jsx'
 import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
@@ -28,7 +29,6 @@ import {
 } from '../lib/profileClient.js'
 import { supabase } from '../supabase.js'
 
-const LOG_STATUSES = new Set(['completed', 'favorite'])
 const BACKLOG_UPDATED_EVENT_NAME = 'turntabled:backlog-updated'
 
 function formatRelativeTime(value) {
@@ -81,6 +81,50 @@ function mapApiFavoritesToAlbums(payload) {
     releaseId: item?.album?.releaseId ?? null,
     rating: item?.rating ?? 0,
   }))
+}
+
+function mapBacklogFavoritesToAlbums(items = [], currentFavorites = []) {
+  const favoriteRows = (Array.isArray(items) ? items : []).filter((item) => Boolean(item?.isFavorite))
+  const favoriteByBacklogId = new Map(
+    favoriteRows
+      .filter((item) => item?.id)
+      .map((item) => [item.id, item])
+  )
+
+  const ordered = []
+  const current = Array.isArray(currentFavorites) ? currentFavorites : []
+  for (const favorite of current) {
+    const backlogId = favorite?.backlogId
+    if (!backlogId || !favoriteByBacklogId.has(backlogId)) continue
+
+    const row = favoriteByBacklogId.get(backlogId)
+    ordered.push({
+      backlogId,
+      title: row?.albumTitleRaw ?? favorite?.title ?? 'Unknown album',
+      artist: row?.artistNameRaw ?? favorite?.artist ?? 'Unknown artist',
+      cover: row?.coverArtUrl || favorite?.cover || '/album/am.jpg',
+      releaseId: favorite?.releaseId ?? null,
+      rating: row?.rating ?? favorite?.rating ?? 0,
+    })
+    favoriteByBacklogId.delete(backlogId)
+  }
+
+  for (const row of favoriteRows) {
+    const backlogId = row?.id ?? null
+    if (!backlogId || !favoriteByBacklogId.has(backlogId)) continue
+
+    ordered.push({
+      backlogId,
+      title: row?.albumTitleRaw ?? 'Unknown album',
+      artist: row?.artistNameRaw ?? 'Unknown artist',
+      cover: row?.coverArtUrl || '/album/am.jpg',
+      releaseId: null,
+      rating: row?.rating ?? 0,
+    })
+    favoriteByBacklogId.delete(backlogId)
+  }
+
+  return ordered
 }
 
 function mapBacklogReviews(items = []) {
@@ -165,33 +209,31 @@ export default function Profile() {
     error: '',
   })
   const [backlogPreview, setBacklogPreview] = useState([])
-  const [loggedAlbumsForEdit, setLoggedAlbumsForEdit] = useState([])
   const [backlogLoading, setBacklogLoading] = useState(false)
   const [editingReview, setEditingReview] = useState(null)
   const [isDeletingReview, setIsDeletingReview] = useState(false)
+  const [isFavoritesManageOpen, setIsFavoritesManageOpen] = useState(false)
+  const [isSavingFavoritesOrder, setIsSavingFavoritesOrder] = useState(false)
+  const [favoriteOrderDraft, setFavoriteOrderDraft] = useState([])
+  const [favoriteOrderError, setFavoriteOrderError] = useState('')
 
   const favoriteCovers = {}
-  const editFavoriteCovers = {}
-
-  const { ratings: favoriteRatings, updateRating: handleFavoriteRatingChange } =
-    useAlbumRatings(favorites)
 
   const { ratings: recentRatings, updateRating: handleRecentRatingChange } =
     useAlbumRatings(recentCarousel)
 
   useEffect(() => {
-    if (!isEditOpen) return
+    if (!isEditOpen && !isFavoritesManageOpen) return
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = originalOverflow
     }
-  }, [isEditOpen])
+  }, [isEditOpen, isFavoritesManageOpen])
 
   useEffect(() => {
     if (!isSignedIn) {
       setBacklogPreview([])
-      setLoggedAlbumsForEdit([])
       setRecentCarousel([])
       setRecentActivityLogs([])
       setReviewList([])
@@ -230,20 +272,25 @@ export default function Profile() {
           page += 1
         }
 
-        const recentItems = allItems.map((item) => ({
+        const sortedItems = [...allItems].sort((a, b) => {
+          const aTime = Date.parse(a?.addedAt ?? a?.updatedAt ?? '') || 0
+          const bTime = Date.parse(b?.addedAt ?? b?.updatedAt ?? '') || 0
+          return bTime - aTime
+        })
+        const recentItems = sortedItems.map((item) => ({
           title: item?.albumTitleRaw ?? 'Unknown album',
           artist: item?.artistNameRaw ?? 'Unknown artist',
           cover: item?.coverArtUrl || '/album/am.jpg',
           rating: item?.rating ?? 0,
-          status: item?.status ?? 'pending',
+          status: item?.status ?? 'backloggd',
           addedAt: item?.addedAt ?? null,
         }))
-        const latestLogs = allItems
-          .filter((item) => LOG_STATUSES.has(item?.status ?? 'pending'))
-          .slice(0, 3)
+        const latestLogs = sortedItems
+          .slice(0, 5)
           .map((item) => ({
             title: item?.albumTitleRaw ?? 'Unknown album',
             artist: item?.artistNameRaw ?? 'Unknown artist',
+            cover: item?.coverArtUrl || '/album/am.jpg',
             year: item?.addedAt ? String(new Date(item.addedAt).getUTCFullYear()) : 'Unknown year',
             rating:
               typeof item?.rating === 'number' ? item.rating.toFixed(1) : String(item?.rating ?? '0.0'),
@@ -252,19 +299,11 @@ export default function Profile() {
           }))
 
         if (!cancelled) {
-          setBacklogPreview(allItems.slice(0, 5))
+          setBacklogPreview([])
           setRecentCarousel(recentItems)
           setRecentActivityLogs(latestLogs)
-          setReviewList(mapBacklogReviews(allItems))
-          setLoggedAlbumsForEdit(
-            allItems.map((item) => ({
-              title: item?.albumTitleRaw ?? 'Unknown album',
-              artist: item?.artistNameRaw ?? 'Unknown artist',
-              cover: item?.coverArtUrl || '',
-              backlogId: item?.id ?? null,
-              isFavorite: Boolean(item?.isFavorite),
-            }))
-          )
+          setReviewList(mapBacklogReviews(sortedItems))
+          setProfileFavorites((current) => mapBacklogFavoritesToAlbums(sortedItems, current))
         }
       } catch {
         if (!cancelled) {
@@ -272,7 +311,6 @@ export default function Profile() {
           setRecentCarousel([])
           setRecentActivityLogs([])
           setReviewList([])
-          setLoggedAlbumsForEdit([])
         }
       } finally {
         if (!cancelled) {
@@ -515,13 +553,40 @@ export default function Profile() {
     }
 
     setProfileFavorites(mapApiFavoritesToAlbums(payload))
-    setLoggedAlbumsForEdit((current) =>
-      current.map((item) => ({
-        ...item,
-        isFavorite: favoriteBacklogIds.includes(item.backlogId),
-      }))
-    )
     return payload
+  }
+
+  const openFavoritesManageModal = () => {
+    setFavoriteOrderDraft(Array.isArray(favorites) ? favorites : [])
+    setFavoriteOrderError('')
+    setIsFavoritesManageOpen(true)
+  }
+
+  const closeFavoritesManageModal = () => {
+    if (isSavingFavoritesOrder) return
+    setIsFavoritesManageOpen(false)
+    setFavoriteOrderError('')
+  }
+
+  const handleFavoriteReorder = (nextOrder) => {
+    setFavoriteOrderDraft(Array.isArray(nextOrder) ? nextOrder : [])
+  }
+
+  const handleSaveFavoriteOrder = async () => {
+    const favoriteBacklogIds = favoriteOrderDraft
+      .map((item) => item?.backlogId)
+      .filter((id) => typeof id === 'string' && id)
+
+    setFavoriteOrderError('')
+    setIsSavingFavoritesOrder(true)
+    try {
+      await handleSaveFavorites(favoriteBacklogIds)
+      setIsFavoritesManageOpen(false)
+    } catch (error) {
+      setFavoriteOrderError(error?.message ?? 'Failed to update favorite order.')
+    } finally {
+      setIsSavingFavoritesOrder(false)
+    }
   }
 
   const emitBacklogUpdated = () => {
@@ -568,7 +633,7 @@ export default function Profile() {
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
-          <Navbar className="w-full" />
+          <Navbar className="mx-auto w-[min(100%,900px)]" />
 
           <main className="overflow-hidden rounded-3xl border border-black/5 bg-white/60 backdrop-blur-md shadow-sm">
             <div className="divide-y divide-black/5">
@@ -632,12 +697,12 @@ export default function Profile() {
                       favorites={favorites}
                       isLoadingFavorites={favoritesLoading}
                       favoriteCovers={favoriteCovers}
-                      favoriteRatings={favoriteRatings}
-                      onFavoriteRatingChange={handleFavoriteRatingChange}
                       recentCarousel={recentCarousel}
                       isLoadingRecent={backlogLoading}
                       recentRatings={recentRatings}
                       onRecentRatingChange={handleRecentRatingChange}
+                      onManageFavorites={openFavoritesManageModal}
+                      manageDisabled={favoritesLoading}
                     />
                     <ReviewsSection
                       reviews={reviewList}
@@ -666,11 +731,11 @@ export default function Profile() {
                         <ul className="divide-y divide-black/5">
                           {backlogPreview.map((item) => (
                             <li key={item.id} className="flex items-center gap-3 py-2.5">
-                              <div className="h-12 w-12 overflow-hidden rounded-xl border border-black/10 bg-black/5">
+                              <div className="h-12 w-12 overflow-hidden border border-black/10 bg-black/5">
                                 <CoverImage
                                   src={item.coverArtUrl || '/album/am.jpg'}
-                                  alt={`${item.albumTitleRaw} cover`}
-                                  className="h-full w-full object-cover"
+                                  alt={`${item.albumTitleRaw} by ${item.artistNameRaw} cover`}
+                                  className="h-full w-full"
                                 />
                               </div>
                               <div className="min-w-0 flex-1">
@@ -711,13 +776,22 @@ export default function Profile() {
         </div>
       </div>
 
+      <FavoritesReorderModal
+        isOpen={isFavoritesManageOpen}
+        orderedFavorites={favoriteOrderDraft}
+        errorMessage={favoriteOrderError}
+        isSaving={isSavingFavoritesOrder}
+        onClose={closeFavoritesManageModal}
+        onReorder={handleFavoriteReorder}
+        onSave={handleSaveFavoriteOrder}
+      />
+
       <EditProfileModal
         isOpen={isEditOpen}
         user={user}
-        favorites={loggedAlbumsForEdit}
-        favoriteCovers={editFavoriteCovers}
+        avatarSrc={profileView.avatarUrl || '/profile/rainy.jpg'}
+        bannerSrc={profileView.coverUrl || '/hero/hero1.jpg'}
         onClose={closeEditModal}
-        onSaveFavorites={handleSaveFavorites}
         onSaved={handleProfileSaved}
       />
       <ReviewModal

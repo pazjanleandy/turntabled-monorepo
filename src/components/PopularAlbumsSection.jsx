@@ -14,11 +14,11 @@ function AlbumTile({ item }) {
 
   return (
     <div className="group w-full snap-start space-y-3">
-      <div className="overflow-hidden rounded-soft bg-white/85 shadow-subtle transition group-hover:-translate-y-1 group-hover:shadow-lg">
+      <div className="overflow-hidden bg-white/85 shadow-subtle transition group-hover:-translate-y-1 group-hover:shadow-lg">
         <CoverImage
           src={coverArtUrl}
-          alt={`${albumTitle} cover`}
-          className="h-[160px] w-[160px] object-cover md:h-[176px] md:w-[176px]"
+          alt={`${albumTitle} by ${artistName} cover`}
+          className="h-[160px] w-[160px] md:h-[176px] md:w-[176px]"
         />
       </div>
       <div className="space-y-1">

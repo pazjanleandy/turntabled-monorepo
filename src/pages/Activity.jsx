@@ -194,11 +194,11 @@ export default function Activity() {
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex gap-4">
-                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-soft border border-black/10 bg-black/5">
+                      <div className="h-20 w-20 shrink-0 overflow-hidden border border-black/10 bg-black/5">
                         <CoverImage
                           src={entry.photo}
-                          alt={`${entry.title} cover`}
-                          className="h-full w-full object-cover"
+                          alt={`${entry.title} by ${entry.artist} cover`}
+                          className="h-full w-full"
                         />
                       </div>
                       <div className="space-y-2">

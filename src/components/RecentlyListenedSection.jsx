@@ -6,11 +6,11 @@ import CoverImage from './CoverImage.jsx'
 function AlbumTile({ album, artist, cover, ratingValue }) {
   return (
     <div className="group w-full snap-start space-y-3">
-      <div className="overflow-hidden rounded-soft bg-white/85 shadow-subtle transition group-hover:-translate-y-1 group-hover:shadow-lg">
+      <div className="overflow-hidden bg-white/85 shadow-subtle transition group-hover:-translate-y-1 group-hover:shadow-lg">
         <CoverImage
           src={cover}
-          alt={`${album} cover`}
-          className="h-[160px] w-[160px] object-cover md:h-[176px] md:w-[176px]"
+          alt={`${album} by ${artist} cover`}
+          className="h-[160px] w-[160px] md:h-[176px] md:w-[176px]"
         />
       </div>
       <div className="space-y-1">

@@ -73,7 +73,7 @@ Create these tables in Supabase Table Editor:
 - `album_id` (uuid, foreign key -> `album.id`, nullable)
 - `artist_name_raw` (text, not null)
 - `album_title_raw` (text, not null)
-- `status` (text, default `pending`)
+- `status` (text, default `backloggd`)
 - `source` (text, default `lastfm`)
 - `added_at` (timestamptz, default `now()`)
 - `updated_at` (timestamptz, default `now()`)

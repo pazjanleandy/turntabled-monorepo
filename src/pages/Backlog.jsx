@@ -1,28 +1,79 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Star } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import BackButton from '../components/BackButton.jsx'
+import AlbumGridItem from '../components/logged/AlbumGridItem.jsx'
+import LoggedToolbar from '../components/logged/LoggedToolbar.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+import { readCachedProfile } from '../lib/profileClient.js'
 
-function StarEditor({ rating, onChange, disabled = false }) {
+const SORT_OPTIONS = [
+  { value: 'date-logged-desc', label: 'Date logged (newest)' },
+  { value: 'date-logged-asc', label: 'Date logged (oldest)' },
+  { value: 'release-date-desc', label: 'Release date (newest)' },
+  { value: 'release-date-asc', label: 'Release date (oldest)' },
+  { value: 'rating-desc', label: 'Rating (high to low)' },
+  { value: 'rating-asc', label: 'Rating (low to high)' },
+  { value: 'title-asc', label: 'Album title (A-Z)' },
+]
+
+function parseYearCandidate(value) {
+  if (value == null || value === '') return 0
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value)
+  }
+  const match = String(value).match(/\d{4}/)
+  return match ? Number.parseInt(match[0], 10) : 0
+}
+
+function getReleaseYear(item) {
   return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((value) => (
-        <button
-          key={value}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(value)}
-          className="rounded-none border-0 bg-transparent p-0 text-lg leading-none text-slate-300 shadow-none transition hover:translate-y-0 hover:bg-transparent disabled:cursor-not-allowed"
-          aria-label={`Set rating to ${value}`}
-        >
-          <Star size={18} weight={value <= rating ? 'fill' : 'regular'} className={value <= rating ? 'text-amber-500' : 'text-slate-300'} />
-        </button>
-      ))}
-    </div>
+    parseYearCandidate(item?.releaseYear) ||
+    parseYearCandidate(item?.releaseDate) ||
+    parseYearCandidate(item?.year)
   )
+}
+
+function getLoggedTime(item) {
+  const raw = item?.listenedOn ?? item?.addedAt ?? item?.updatedAt ?? ''
+  const timestamp = Date.parse(raw)
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+function getReleaseTime(item) {
+  const releaseYear = getReleaseYear(item)
+  if (releaseYear) {
+    return Date.UTC(releaseYear, 0, 1)
+  }
+  return 0
+}
+
+function getItemDecade(item) {
+  const loggedTime = getLoggedTime(item)
+  const loggedYear = loggedTime ? new Date(loggedTime).getUTCFullYear() : 0
+  const year = getReleaseYear(item) || loggedYear
+  if (!year) return 0
+  return Math.floor(year / 10) * 10
+}
+
+function getItemGenres(item) {
+  if (Array.isArray(item?.genres)) return item.genres.filter(Boolean)
+  if (typeof item?.genre === 'string' && item.genre.trim()) return [item.genre.trim()]
+  return []
+}
+
+function getItemStatus(item) {
+  const status = item?.status ?? ''
+  return typeof status === 'string' ? status.trim().toLowerCase() : ''
+}
+
+function getAvatarInitials(value = '') {
+  const normalized = String(value).trim().replace(/^@/, '')
+  if (!normalized) return 'U'
+  const parts = normalized.split(/\s+/).filter(Boolean)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
 }
 
 export default function Backlog() {
@@ -31,6 +82,25 @@ export default function Backlog() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [busyItemId, setBusyItemId] = useState('')
+  const [ratingFilter, setRatingFilter] = useState('all')
+  const [decadeFilter, setDecadeFilter] = useState('all')
+  const [genreFilter, setGenreFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('date-logged-desc')
+  const cachedProfile = readCachedProfile()
+  const currentDisplayName =
+    cachedProfile?.fullName?.trim() || cachedProfile?.username?.trim() || 'You'
+  const currentHandle = cachedProfile?.username?.trim()
+    ? `@${cachedProfile.username.trim().replace(/^@/, '')}`
+    : ''
+  const currentAvatarUrl =
+    typeof cachedProfile?.avatarUrl === 'string' ? cachedProfile.avatarUrl.trim() : ''
+  const currentInitials = getAvatarInitials(currentDisplayName || currentHandle || 'You')
+  const hasActiveFilters =
+    ratingFilter !== 'all' ||
+    decadeFilter !== 'all' ||
+    genreFilter !== 'all' ||
+    statusFilter !== 'all'
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -55,7 +125,7 @@ export default function Backlog() {
 
         const payload = await response.json()
         if (!response.ok) {
-          throw new Error(payload?.error?.message ?? 'Failed to load backlog.')
+          throw new Error(payload?.error?.message ?? 'Failed to load logged albums.')
         }
 
         if (!cancelled) {
@@ -65,7 +135,7 @@ export default function Backlog() {
         if (loadErr?.name === 'AbortError') return
         if (!cancelled) {
           setItems([])
-          setError(loadErr?.message ?? 'Unable to load backlog.')
+          setError(loadErr?.message ?? 'Unable to load logged albums.')
         }
       } finally {
         if (!cancelled) {
@@ -81,7 +151,94 @@ export default function Backlog() {
     }
   }, [isSignedIn])
 
-  const hasItems = useMemo(() => items.length > 0, [items.length])
+  const loggedCollection = useMemo(() => {
+    // Temporary source until a dedicated /logged endpoint is introduced.
+    return Array.isArray(items) ? items : []
+  }, [items])
+
+  const decadeOptions = useMemo(() => {
+    const uniqueDecades = new Set()
+    for (const item of loggedCollection) {
+      const decade = getItemDecade(item)
+      if (decade) uniqueDecades.add(decade)
+    }
+    return Array.from(uniqueDecades)
+      .sort((a, b) => b - a)
+      .map((decade) => ({ value: String(decade), label: `${decade}s` }))
+  }, [loggedCollection])
+
+  const genreOptions = useMemo(() => {
+    const uniqueGenres = new Map()
+    for (const item of loggedCollection) {
+      for (const genre of getItemGenres(item)) {
+        const key = genre.toLowerCase()
+        if (!uniqueGenres.has(key)) {
+          uniqueGenres.set(key, genre)
+        }
+      }
+    }
+    return Array.from(uniqueGenres.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }))
+  }, [loggedCollection])
+
+  const statusOptions = useMemo(() => {
+    const uniqueStatuses = new Map()
+    for (const item of loggedCollection) {
+      const status = getItemStatus(item)
+      if (!status) continue
+      if (!uniqueStatuses.has(status)) {
+        const label = status.charAt(0).toUpperCase() + status.slice(1)
+        uniqueStatuses.set(status, label)
+      }
+    }
+    return Array.from(uniqueStatuses.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }))
+  }, [loggedCollection])
+
+  const visibleLogged = useMemo(() => {
+    const filtered = loggedCollection.filter((item) => {
+      const ratingValue = Number(ratingFilter)
+      if (ratingFilter !== 'all' && Number.isFinite(ratingValue)) {
+        const itemRating = Number(item?.rating ?? 0)
+        if (itemRating < ratingValue) return false
+      }
+
+      if (decadeFilter !== 'all') {
+        const decade = getItemDecade(item)
+        if (!decade || String(decade) !== decadeFilter) return false
+      }
+
+      if (genreFilter !== 'all') {
+        const hasGenre = getItemGenres(item).some((genre) => genre.toLowerCase() === genreFilter)
+        if (!hasGenre) return false
+      }
+
+      if (statusFilter !== 'all') {
+        const status = getItemStatus(item)
+        if (status !== statusFilter) return false
+      }
+
+      return true
+    })
+
+    const sorted = [...filtered]
+    sorted.sort((a, b) => {
+      if (sortBy === 'date-logged-asc') return getLoggedTime(a) - getLoggedTime(b)
+      if (sortBy === 'date-logged-desc') return getLoggedTime(b) - getLoggedTime(a)
+      if (sortBy === 'release-date-desc') return getReleaseTime(b) - getReleaseTime(a)
+      if (sortBy === 'release-date-asc') return getReleaseTime(a) - getReleaseTime(b)
+      if (sortBy === 'rating-desc') return Number(b?.rating ?? 0) - Number(a?.rating ?? 0)
+      if (sortBy === 'rating-asc') return Number(a?.rating ?? 0) - Number(b?.rating ?? 0)
+      if (sortBy === 'title-asc') {
+        return String(a?.albumTitleRaw ?? a?.title ?? '').localeCompare(String(b?.albumTitleRaw ?? b?.title ?? ''))
+      }
+      return 0
+    })
+
+    return sorted
+  }, [loggedCollection, ratingFilter, decadeFilter, genreFilter, statusFilter, sortBy])
 
   const updateRating = async (itemId, rating) => {
     if (!itemId || busyItemId) return
@@ -101,7 +258,7 @@ export default function Backlog() {
       })
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(payload?.error?.message ?? 'Failed to update rating.')
+        throw new Error(payload?.error?.message ?? 'Failed to update logged rating.')
       }
 
       const nextItem = payload?.item
@@ -109,7 +266,7 @@ export default function Backlog() {
         current.map((item) => (item.id === itemId ? { ...item, rating: nextItem?.rating ?? rating } : item)),
       )
     } catch (updateErr) {
-      setError(updateErr?.message ?? 'Unable to update rating.')
+      setError(updateErr?.message ?? 'Unable to update logged rating.')
     } finally {
       setBusyItemId('')
     }
@@ -129,15 +286,34 @@ export default function Backlog() {
       })
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(payload?.error?.message ?? 'Failed to remove item.')
+        throw new Error(payload?.error?.message ?? 'Failed to remove logged album.')
       }
       setItems((current) => current.filter((item) => item.id !== itemId))
     } catch (deleteErr) {
-      setError(deleteErr?.message ?? 'Unable to remove backlog item.')
+      setError(deleteErr?.message ?? 'Unable to remove logged album.')
     } finally {
       setBusyItemId('')
     }
   }
+
+  const handleEditRating = async (item) => {
+    const itemId = item?.id
+    if (!itemId || busyItemId) return
+
+    const raw = window.prompt('Set a rating from 1 to 5.', String(item?.rating ?? ''))
+    if (raw == null) return
+
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 5) {
+      setError('Rating must be a number between 1 and 5.')
+      return
+    }
+
+    const nextRating = Math.round(parsed * 2) / 2
+    await updateRating(itemId, nextRating)
+  }
+
+  const gridClass = 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7'
 
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
@@ -146,26 +322,105 @@ export default function Backlog() {
         <BackButton className="self-start" />
 
         <section className="card vinyl-texture">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="mb-0 text-xs font-semibold uppercase tracking-[0.25em] text-muted">My Backlog</p>
-              <h1 className="mb-0 text-2xl text-text">Albums to spin next</h1>
+          <div className="grid gap-y-3 md:grid-cols-[180px_1fr_auto] md:items-start md:gap-x-2">
+            <div className="flex items-center justify-between gap-3 md:hidden">
+              {isSignedIn ? (
+                <Link
+                  to="/profile"
+                  className="inline-flex min-w-0 flex-1 items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                >
+                  {currentAvatarUrl ? (
+                    <img
+                      src={currentAvatarUrl}
+                      alt={`${currentDisplayName} avatar`}
+                      className="h-8 w-8 rounded-full border border-black/10 object-cover"
+                    />
+                  ) : (
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-accent/15 text-xs font-semibold uppercase text-accent">
+                      {currentInitials}
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-text">{currentDisplayName}</span>
+                    {currentHandle ? (
+                      <span className="block truncate text-[11px] text-muted">{currentHandle}</span>
+                    ) : null}
+                  </span>
+                </Link>
+              ) : (
+                <div />
+              )}
+              <div className="shrink-0 text-right">
+                <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                  {visibleLogged.length} shown
+                </span>
+                {hasActiveFilters ? (
+                  <span className="block text-[11px] text-muted">Filtered results</span>
+                ) : null}
+              </div>
             </div>
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
-              {items.length} saved
-            </span>
+
+            <div className="hidden md:block md:col-start-1 md:row-span-2">
+              {isSignedIn ? (
+                <Link
+                  to="/profile"
+                  className="inline-flex min-w-0 items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                >
+                  {currentAvatarUrl ? (
+                    <img
+                      src={currentAvatarUrl}
+                      alt={`${currentDisplayName} avatar`}
+                      className="h-10 w-10 rounded-full border border-black/10 object-cover"
+                    />
+                  ) : (
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-accent/15 text-sm font-semibold uppercase text-accent">
+                      {currentInitials}
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-text">{currentDisplayName}</span>
+                    {currentHandle ? (
+                      <span className="block truncate text-[11px] text-muted">{currentHandle}</span>
+                    ) : null}
+                  </span>
+                </Link>
+              ) : null}
+            </div>
+
+            <div className="text-left md:hidden">
+              <h1 className="mb-1 text-2xl text-text">Logged</h1>
+              <p className="mb-0 max-w-prose text-sm text-muted">Cover-first view of your logged albums.</p>
+            </div>
+
+            <div className="hidden md:block md:col-start-2 md:row-start-1">
+              <h1 className="mb-0 text-2xl text-text">Logged</h1>
+            </div>
+
+            <div className="hidden text-right md:block md:col-start-3 md:row-start-1 md:pt-0.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                {visibleLogged.length} shown
+              </span>
+              {hasActiveFilters ? (
+                <span className="mt-1 block text-[11px] text-muted">Filtered results</span>
+              ) : null}
+            </div>
+
+            <p className="hidden md:col-start-2 md:row-start-2 md:mb-0 md:block md:max-w-prose md:text-sm md:text-muted">
+              Cover-first view of your logged albums.
+            </p>
+
           </div>
         </section>
 
         {!isSignedIn ? (
           <section className="card vinyl-texture">
-            <p className="mb-0 text-sm text-muted">Sign in to view your private backlog.</p>
+            <p className="mb-0 text-sm text-muted">Sign in to view your logged albums.</p>
           </section>
         ) : isLoading ? (
           <section className="card vinyl-texture">
-            <p className="mb-0 text-sm text-muted">Loading your backlog...</p>
+            <p className="mb-0 text-sm text-muted">Loading your logged albums...</p>
           </section>
-        ) : !hasItems ? (
+        ) : !loggedCollection.length ? (
           <section className="card vinyl-texture">
             <p className="mb-2 text-sm text-muted">No albums logged yet.</p>
             <Link to="/explore" className="inline-flex rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-900">
@@ -173,44 +428,49 @@ export default function Backlog() {
             </Link>
           </section>
         ) : (
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {items.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-2xl border border-black/5 bg-white/80 p-4 shadow-[0_16px_30px_-24px_rgba(15,15,15,0.35)]"
-              >
-                <div className="flex items-start gap-4">
-                  <img
-                    src={item.coverArtUrl || '/album/am.jpg'}
-                    alt={`${item.albumTitleRaw} cover`}
-                    className="h-20 w-20 rounded-xl border border-black/5 object-cover"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <h2 className="mb-1 truncate text-lg text-text">{item.albumTitleRaw}</h2>
-                    <p className="mb-1 truncate text-sm font-semibold text-slate-700">{item.artistNameRaw}</p>
-                    <p className="mb-2 text-xs text-muted">
-                      Added {item.addedAt ? new Date(item.addedAt).toLocaleDateString() : 'Unknown'}
-                    </p>
-                    <StarEditor
-                      rating={item.rating ?? 0}
-                      disabled={busyItemId === item.id}
-                      onChange={(rating) => updateRating(item.id, rating)}
+          <>
+            <div className="sticky top-3 z-20">
+              <LoggedToolbar
+                ratingFilter={ratingFilter}
+                onRatingFilterChange={setRatingFilter}
+                decadeFilter={decadeFilter}
+                onDecadeFilterChange={setDecadeFilter}
+                genreFilter={genreFilter}
+                onGenreFilterChange={setGenreFilter}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                sortBy={sortBy}
+                onSortByChange={setSortBy}
+                decadeOptions={decadeOptions}
+                genreOptions={genreOptions}
+                statusOptions={statusOptions}
+                sortOptions={SORT_OPTIONS}
+              />
+            </div>
+
+            {visibleLogged.length === 0 ? (
+              <section className="card vinyl-texture">
+                <p className="mb-0 text-sm text-muted">
+                  No logged albums match your current filters.
+                </p>
+              </section>
+            ) : (
+              <section className={gridClass}>
+                {visibleLogged.map((item, index) => {
+                  const key = item?.id ?? `${item?.albumTitleRaw ?? 'album'}-${item?.artistNameRaw ?? 'artist'}-${index}`
+                  return (
+                    <AlbumGridItem
+                      key={key}
+                      item={item}
+                      isBusy={busyItemId === item?.id}
+                      onEditRating={handleEditRating}
+                      onRemove={(entry) => removeItem(entry?.id)}
                     />
-                  </div>
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    disabled={busyItemId === item.id}
-                    className="rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 shadow-none transition hover:bg-black/5 hover:translate-y-0 disabled:opacity-60"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </article>
-            ))}
-          </section>
+                  )
+                })}
+              </section>
+            )}
+          </>
         )}
 
         {error ? <p className="mb-0 text-sm font-semibold text-red-700">{error}</p> : null}

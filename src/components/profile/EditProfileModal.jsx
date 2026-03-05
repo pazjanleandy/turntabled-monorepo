@@ -1,71 +1,110 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'phosphor-react'
-import CoverImage from '../CoverImage.jsx'
+import AvatarResizeModal from './AvatarResizeModal.jsx'
+import BannerResizeModal from './BannerResizeModal.jsx'
+import ProfileHeaderUpload from './ProfileHeaderUpload.jsx'
 import { buildApiAuthHeaders } from '../../lib/apiAuth.js'
 import {
   emitProfileUpdated,
   fetchCurrentProfile,
   uploadAvatarAndPersistPath,
+  uploadCoverAndPersistUrl,
   validateAvatarFile,
+  validateCoverFile,
 } from '../../lib/profileClient.js'
-
-function getFavoriteIds(items) {
-  return (Array.isArray(items) ? items : [])
-    .filter((item) => item?.isFavorite && item?.backlogId)
-    .map((item) => item.backlogId)
-    .sort()
-}
-
-function favoriteIdsChanged(beforeItems, afterItems) {
-  const before = getFavoriteIds(beforeItems)
-  const after = getFavoriteIds(afterItems)
-  if (before.length !== after.length) return true
-  for (let i = 0; i < before.length; i += 1) {
-    if (before[i] !== after[i]) return true
-  }
-  return false
-}
 
 export default function EditProfileModal({
   isOpen,
   user,
-  favorites,
-  favoriteCovers,
+  avatarSrc = '',
+  bannerSrc = '/hero/hero1.jpg',
   onClose,
-  onSaveFavorites,
   onSaved,
 }) {
   const [name, setName] = useState(user?.name ?? '')
   const [bio, setBio] = useState(user?.bio ?? '')
   const [selectedFile, setSelectedFile] = useState(null)
-  const [editableFavorites, setEditableFavorites] = useState([])
+  const [selectedBannerFile, setSelectedBannerFile] = useState(null)
+  const [avatarResizeSourceFile, setAvatarResizeSourceFile] = useState(null)
+  const [isAvatarResizeOpen, setIsAvatarResizeOpen] = useState(false)
+  const [bannerResizeSourceFile, setBannerResizeSourceFile] = useState(null)
+  const [isBannerResizeOpen, setIsBannerResizeOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const fileInputRef = useRef(null)
+  const bannerFileInputRef = useRef(null)
+  const avatarPreviewFile = avatarResizeSourceFile ?? selectedFile
+  const bannerPreviewFile = bannerResizeSourceFile ?? selectedBannerFile
+
+  const avatarPreviewUrl = useMemo(() => {
+    if (!avatarPreviewFile) return ''
+    return URL.createObjectURL(avatarPreviewFile)
+  }, [avatarPreviewFile])
+
+  const bannerPreviewUrl = useMemo(() => {
+    if (!bannerPreviewFile) return ''
+    return URL.createObjectURL(bannerPreviewFile)
+  }, [bannerPreviewFile])
+  const resolvedAvatarPreviewUrl = avatarPreviewUrl || avatarSrc || ''
+  const resolvedBannerPreviewUrl = bannerPreviewUrl || bannerSrc || ''
+
+  useEffect(() => {
+    if (!avatarPreviewUrl) return undefined
+    return () => URL.revokeObjectURL(avatarPreviewUrl)
+  }, [avatarPreviewUrl])
+
+  useEffect(() => {
+    if (!bannerPreviewUrl) return undefined
+    return () => URL.revokeObjectURL(bannerPreviewUrl)
+  }, [bannerPreviewUrl])
+
+  const fallbackInitials = useMemo(() => {
+    const nameValue = (name || user?.name || '').trim()
+    if (!nameValue) return 'U'
+    return nameValue
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || 'U'
+  }, [name, user?.name])
+
+  const resetFileInput = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [])
+
+  const resetBannerInput = useCallback(() => {
+    if (bannerFileInputRef.current) {
+      bannerFileInputRef.current.value = ''
+    }
+  }, [])
 
   useEffect(() => {
     if (!isOpen) return
     setName(user?.name ?? '')
     setBio(user?.bio ?? '')
     setSelectedFile(null)
-    setEditableFavorites(Array.isArray(favorites) ? favorites : [])
+    setSelectedBannerFile(null)
+    setAvatarResizeSourceFile(null)
+    setIsAvatarResizeOpen(false)
+    setBannerResizeSourceFile(null)
+    setIsBannerResizeOpen(false)
     setErrorMessage('')
     setSuccessMessage('')
-  }, [isOpen, user?.name, user?.bio, favorites])
-
-  const hasFavoriteChanges = useMemo(
-    () => favoriteIdsChanged(favorites, editableFavorites),
-    [favorites, editableFavorites]
-  )
+    resetFileInput()
+    resetBannerInput()
+  }, [isOpen, user?.name, user?.bio, resetFileInput, resetBannerInput])
 
   const hasPendingChanges = useMemo(() => {
     return (
       name.trim() !== (user?.name ?? '') ||
       bio.trim() !== (user?.bio ?? '') ||
       Boolean(selectedFile) ||
-      hasFavoriteChanges
+      Boolean(selectedBannerFile)
     )
-  }, [name, bio, selectedFile, user?.name, user?.bio, hasFavoriteChanges])
+  }, [name, bio, selectedFile, selectedBannerFile, user?.name, user?.bio])
 
   const handleFileChange = (event) => {
     setErrorMessage('')
@@ -73,31 +112,108 @@ export default function EditProfileModal({
 
     const nextFile = event.target.files?.[0] ?? null
     if (!nextFile) {
-      setSelectedFile(null)
       return
     }
 
     const validation = validateAvatarFile(nextFile)
     if (!validation.valid) {
-      setSelectedFile(null)
       setErrorMessage(validation.message)
+      resetFileInput()
       return
     }
 
-    setSelectedFile(nextFile)
+    setAvatarResizeSourceFile(nextFile)
+    setIsAvatarResizeOpen(true)
   }
 
-  const handleToggleFavoriteClick = (album) => {
-    const backlogId = album?.backlogId
-    if (!backlogId) return
-
+  const handleBannerFileChange = (event) => {
     setErrorMessage('')
     setSuccessMessage('')
-    setEditableFavorites((current) =>
-      current.map((item) =>
-        item.backlogId === backlogId ? { ...item, isFavorite: !item.isFavorite } : item
-      )
-    )
+
+    const nextFile = event.target.files?.[0] ?? null
+    if (!nextFile) {
+      return
+    }
+
+    const validation = validateCoverFile(nextFile)
+    if (!validation.valid) {
+      setErrorMessage(validation.message)
+      resetBannerInput()
+      return
+    }
+
+    setBannerResizeSourceFile(nextFile)
+    setIsBannerResizeOpen(true)
+  }
+
+  const handleChooseImageClick = () => {
+    if (isSaving) return
+    fileInputRef.current?.click()
+  }
+
+  const handleChooseBannerClick = () => {
+    if (isSaving) return
+    bannerFileInputRef.current?.click()
+  }
+
+  const handleRemoveAvatarSelection = () => {
+    if (isSaving) return
+    setSelectedFile(null)
+    setAvatarResizeSourceFile(null)
+    setIsAvatarResizeOpen(false)
+    setErrorMessage('')
+    setSuccessMessage('')
+    resetFileInput()
+  }
+
+  const handleRemoveBannerSelection = () => {
+    if (isSaving) return
+    setSelectedBannerFile(null)
+    setBannerResizeSourceFile(null)
+    setIsBannerResizeOpen(false)
+    setErrorMessage('')
+    setSuccessMessage('')
+    resetBannerInput()
+  }
+
+  const handleAvatarResizeClose = () => {
+    setAvatarResizeSourceFile(null)
+    setIsAvatarResizeOpen(false)
+    resetFileInput()
+  }
+
+  const handleBannerResizeClose = () => {
+    setBannerResizeSourceFile(null)
+    setIsBannerResizeOpen(false)
+    resetBannerInput()
+  }
+
+  const handleAvatarResizeConfirm = async (resizedFile) => {
+    const validation = validateAvatarFile(resizedFile)
+    if (!validation.valid) {
+      throw new Error(validation.message)
+    }
+
+    setSelectedFile(resizedFile)
+    setAvatarResizeSourceFile(null)
+    setIsAvatarResizeOpen(false)
+    setErrorMessage('')
+    setSuccessMessage('')
+    resetFileInput()
+  }
+
+  const handleBannerResizeConfirm = async (resizedFile) => {
+    const validation = validateCoverFile(resizedFile)
+    if (!validation.valid) {
+      throw new Error(validation.message)
+    }
+
+    setSelectedBannerFile(resizedFile)
+    setBannerResizeSourceFile(null)
+    setIsBannerResizeOpen(false)
+    setErrorMessage('')
+    setSuccessMessage('')
+    resetBannerInput()
   }
 
   const handleSaveChanges = async () => {
@@ -111,9 +227,12 @@ export default function EditProfileModal({
 
     setIsSaving(true)
     try {
-      let latestAvatarProfile = null
+      let latestMediaProfile = null
       if (selectedFile) {
-        latestAvatarProfile = await uploadAvatarAndPersistPath(selectedFile)
+        latestMediaProfile = await uploadAvatarAndPersistPath(selectedFile)
+      }
+      if (selectedBannerFile) {
+        latestMediaProfile = await uploadCoverAndPersistUrl(selectedBannerFile)
       }
 
       const shouldPatchProfileText = name.trim() !== (user?.name ?? '') || bio.trim() !== (user?.bio ?? '')
@@ -140,17 +259,7 @@ export default function EditProfileModal({
         }
       }
 
-      if (hasFavoriteChanges && onSaveFavorites) {
-        const favoritePayload = await onSaveFavorites(getFavoriteIds(editableFavorites))
-        result = result ?? { user: {} }
-        result.favorites = favoritePayload?.favorites ?? result.favorites
-        result.user = {
-          ...(result.user ?? {}),
-          ...(favoritePayload?.user ?? {}),
-        }
-      }
-
-      const syncedProfile = latestAvatarProfile ?? (await fetchCurrentProfile().catch(() => null))
+      const syncedProfile = latestMediaProfile ?? (await fetchCurrentProfile().catch(() => null))
       if (syncedProfile) {
         emitProfileUpdated(syncedProfile)
       }
@@ -180,138 +289,109 @@ export default function EditProfileModal({
   if (!isOpen) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
+    <>
       <div
-        className="scrollbar-sleek w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-black/5 bg-white p-6 shadow-[0_28px_60px_-34px_rgba(15,15,15,0.55)]"
-        onClick={(event) => event.stopPropagation()}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8"
+        role="dialog"
+        aria-modal="true"
+        onClick={onClose}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-              Edit profile
-            </p>
-            <h2 className="mb-0 text-xl text-text">Update your details</h2>
-          </div>
-          <button
-            className="rounded-full border border-black/10 p-2 text-muted transition hover:text-text"
-            onClick={onClose}
-            aria-label="Close edit profile"
-          >
-            <X size={16} weight="bold" />
-          </button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-4">
-          <label className="space-y-2 text-sm font-semibold text-text">
-            Change name
-            <input
-              type="text"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm font-semibold text-text">
-            Change bio
-            <textarea
-              value={bio}
-              onChange={(event) => setBio(event.target.value)}
-              rows={3}
-              className="w-full resize-none rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-            />
-          </label>
-
-          <label className="space-y-2 text-sm font-semibold text-text">
-            Change image
-            <input
-              type="file"
-              accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-              onChange={handleFileChange}
-              className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-            />
-            {selectedFile ? (
-              <p className="mb-0 text-xs text-slate-600">Selected: {selectedFile.name}</p>
-            ) : (
-              <p className="mb-0 text-xs text-slate-500">Supported formats: PNG or JPEG, up to 2MB.</p>
-            )}
-          </label>
-
-          {errorMessage ? (
-            <p className="mb-0 text-xs font-semibold text-red-600">{errorMessage}</p>
-          ) : null}
-          {successMessage ? (
-            <p className="mb-0 text-xs font-semibold text-emerald-700">{successMessage}</p>
-          ) : null}
-
-          <div>
-            <div className="flex items-center justify-between gap-3">
-              <p className="mb-0 text-sm font-semibold text-text">
-                Favorite albums
+        <div
+          className="scrollbar-sleek w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-black/5 bg-white p-6 shadow-[0_28px_60px_-34px_rgba(15,15,15,0.55)]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                Edit profile
               </p>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-                {editableFavorites.length} slots
-              </span>
+              <h2 className="mb-0 text-xl text-text">Update your details</h2>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {editableFavorites.map((album) => {
-                const key = `${album.artist} - ${album.title}`
-                return (
-                  <div
-                    key={key}
-                    className="flex flex-col items-center gap-2 rounded-2xl border border-black/5 bg-white/70 p-3 text-center"
-                  >
-                    <CoverImage
-                      src={favoriteCovers[key] ?? album.cover}
-                      alt={`${album.title} cover`}
-                      className="h-20 w-20 object-cover"
-                    />
-                    <div className="min-w-0">
-                      <p className="mb-0 truncate text-xs font-semibold text-text">
-                        {album.title}
-                      </p>
-                      <p className="mb-0 truncate text-[11px] text-muted">
-                        {album.artist}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-full border border-black/10 bg-white px-3 py-1 text-[11px] font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => handleToggleFavoriteClick(album)}
-                      disabled={isSaving}
-                    >
-                      {album.isFavorite ? 'Remove' : 'Add'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+            <button
+              className="rounded-full border border-black/10 p-2 text-muted transition hover:text-text"
+              onClick={onClose}
+              aria-label="Close edit profile"
+            >
+              <X size={16} weight="bold" />
+            </button>
           </div>
-        </div>
 
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
-          <button
-            className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
-            onClick={onClose}
-            disabled={isSaving}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={handleSaveChanges}
-            disabled={isSaving}
-          >
-            {isSaving ? 'Saving changes...' : 'Save changes'}
-          </button>
+          <div className="mt-5 grid grid-cols-1 gap-4">
+            <ProfileHeaderUpload
+              isSaving={isSaving}
+              bannerInputRef={bannerFileInputRef}
+              avatarInputRef={fileInputRef}
+              onBannerChange={handleBannerFileChange}
+              onAvatarChange={handleFileChange}
+              onBannerEdit={handleChooseBannerClick}
+              onAvatarEdit={handleChooseImageClick}
+              onBannerRemove={bannerPreviewFile ? handleRemoveBannerSelection : null}
+              onAvatarRemove={avatarPreviewFile ? handleRemoveAvatarSelection : null}
+              bannerPreviewUrl={resolvedBannerPreviewUrl}
+              avatarPreviewUrl={resolvedAvatarPreviewUrl}
+              fallbackInitials={fallbackInitials}
+            />
+
+            <label className="space-y-2 text-sm font-semibold text-text">
+              Change name
+              <input
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+              />
+            </label>
+
+            <label className="space-y-2 text-sm font-semibold text-text">
+              Change bio
+              <textarea
+                value={bio}
+                onChange={(event) => setBio(event.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+              />
+            </label>
+
+            {errorMessage ? (
+              <p className="mb-0 text-xs font-semibold text-red-600">{errorMessage}</p>
+            ) : null}
+            {successMessage ? (
+              <p className="mb-0 text-xs font-semibold text-emerald-700">{successMessage}</p>
+            ) : null}
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
+            <button
+              className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
+              onClick={onClose}
+              disabled={isSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={handleSaveChanges}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving changes...' : 'Save changes'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      <AvatarResizeModal
+        isOpen={isAvatarResizeOpen}
+        file={avatarResizeSourceFile}
+        onClose={handleAvatarResizeClose}
+        onConfirm={handleAvatarResizeConfirm}
+      />
+      <BannerResizeModal
+        isOpen={isBannerResizeOpen}
+        file={bannerResizeSourceFile}
+        onClose={handleBannerResizeClose}
+        onConfirm={handleBannerResizeConfirm}
+      />
+    </>
   )
 }

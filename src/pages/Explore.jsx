@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
 import BackButton from '../components/BackButton.jsx'
-import CoverImage from '../components/CoverImage.jsx'
+import ExploreAlbumTile from '../components/explore/ExploreAlbumTile.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { supabase } from '../supabase.js'
 
@@ -16,10 +16,19 @@ const FILTER_OPTIONS = [
   { value: 'popular-week', label: 'Popular week' },
 ]
 
+function parseYearCandidate(value) {
+  if (value == null || value === '') return 0
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
+  const match = String(value).match(/\d{4}/)
+  return match ? Number.parseInt(match[0], 10) : 0
+}
+
 export default function Explore() {
   const { isSignedIn } = useAuthStatus()
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
+  const [decadeFilter, setDecadeFilter] = useState('all')
+  const [genreFilter, setGenreFilter] = useState('all')
   const [apiAlbums, setApiAlbums] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -75,13 +84,32 @@ export default function Explore() {
           const title = item?.albumTitle ?? 'Unknown Album'
           const artist = item?.artistName ?? 'Unknown Artist'
           const albumId = item?.albumId ?? null
+          const sourceGenres = Array.isArray(item?.genres) ? item.genres : []
+          const primaryType =
+            typeof item?.primaryType === 'string' && item.primaryType.trim()
+              ? item.primaryType.trim()
+              : ''
+          const genres = sourceGenres
+            .map((value) => String(value).trim())
+            .filter(Boolean)
+
+          if (genres.length === 0 && primaryType) {
+            genres.push(primaryType)
+          }
+
+          const releaseYear =
+            parseYearCandidate(item?.releaseDate) ||
+            parseYearCandidate(item?.lastSyncedAt) ||
+            0
+
           return {
             id: item?.backlogId ?? item?.albumId ?? `${artist}-${title}`,
             albumId,
             title,
             artist,
             cover: item?.coverArtUrl || '/album/am.jpg',
-            year: item?.lastSyncedAt ? new Date(item.lastSyncedAt).getFullYear().toString() : '0',
+            year: releaseYear ? String(releaseYear) : '0',
+            genres,
           }
         })
 
@@ -117,15 +145,62 @@ export default function Explore() {
 
   const albums = useMemo(() => apiAlbums, [apiAlbums])
 
+  const decadeOptions = useMemo(() => {
+    const decades = new Set()
+    for (const item of albums) {
+      const year = parseYearCandidate(item?.year)
+      if (!year) continue
+      decades.add(Math.floor(year / 10) * 10)
+    }
+    return Array.from(decades)
+      .sort((a, b) => b - a)
+      .map((decade) => ({ value: String(decade), label: `${decade}s` }))
+  }, [albums])
+
+  const genreOptions = useMemo(() => {
+    const genres = new Map()
+    for (const item of albums) {
+      const values = Array.isArray(item?.genres) ? item.genres : []
+      for (const genre of values) {
+        const normalized = String(genre).trim()
+        if (!normalized) continue
+        const key = normalized.toLowerCase()
+        if (!genres.has(key)) {
+          genres.set(key, normalized)
+        }
+      }
+    }
+    return Array.from(genres.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }))
+  }, [albums])
+
   const visibleAlbums = useMemo(() => {
     const term = query.trim().toLowerCase()
-    const filtered = !term
-      ? albums
-      : albums.filter(
-          (item) =>
-            item.title.toLowerCase().includes(term) ||
-            item.artist.toLowerCase().includes(term),
+    const filtered = albums.filter((item) => {
+      if (
+        term &&
+        !item.title.toLowerCase().includes(term) &&
+        !item.artist.toLowerCase().includes(term)
+      ) {
+        return false
+      }
+
+      if (decadeFilter !== 'all') {
+        const year = parseYearCandidate(item?.year)
+        const decade = year ? Math.floor(year / 10) * 10 : 0
+        if (!decade || String(decade) !== decadeFilter) return false
+      }
+
+      if (genreFilter !== 'all') {
+        const hasGenre = (Array.isArray(item?.genres) ? item.genres : []).some(
+          (genre) => String(genre).trim().toLowerCase() === genreFilter,
         )
+        if (!hasGenre) return false
+      }
+
+      return true
+    })
 
     const sorted = [...filtered]
     if (activeFilter === 'a-z') {
@@ -137,7 +212,7 @@ export default function Explore() {
     }
 
     return sorted
-  }, [albums, query, activeFilter])
+  }, [albums, query, activeFilter, decadeFilter, genreFilter])
 
   const handleFilterChange = (event) => {
     const next = event.target.value
@@ -148,15 +223,16 @@ export default function Explore() {
 
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 md:gap-6">
         {isSignedIn ? (
           <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
         ) : (
           <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
         )}
+
         <BackButton className="self-start" />
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="flex flex-col gap-2">
           <label className="flex-1 text-sm font-semibold text-text">
             <span className="sr-only">Search albums</span>
             <input
@@ -167,33 +243,69 @@ export default function Explore() {
               className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             />
           </label>
-          <label className="text-sm font-semibold text-text">
-            <span className="sr-only">Sort and filter</span>
-            <select
-              value={activeFilter}
-              onChange={handleFilterChange}
-              className="w-full min-w-[220px] rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20 md:w-auto"
-            >
-              {FILTER_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm font-semibold text-text">
+              <span className="sr-only">Filter by decade</span>
+              <select
+                value={decadeFilter}
+                onChange={(event) => setDecadeFilter(event.target.value)}
+                className="min-w-[170px] rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="all">All decades</option>
+                {decadeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-semibold text-text">
+              <span className="sr-only">Filter by genre</span>
+              <select
+                value={genreFilter}
+                onChange={(event) => setGenreFilter(event.target.value)}
+                className="min-w-[170px] rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="all">All genres</option>
+                {genreOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-semibold text-text">
+              <span className="sr-only">Sort and filter</span>
+              <select
+                value={activeFilter}
+                onChange={handleFilterChange}
+                className="min-w-[220px] rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+              >
+                {FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
 
-        <section className="card vinyl-texture">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black/10 pb-2">
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
                 Explore
               </p>
               <h2 className="mb-0 text-xl text-text">Album catalog</h2>
             </div>
-            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-              {visibleAlbums.length} album{visibleAlbums.length === 1 ? '' : 's'}
-            </span>
+            <div className="ml-auto flex flex-wrap items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                {visibleAlbums.length} album{visibleAlbums.length === 1 ? '' : 's'}
+              </span>
+            </div>
           </div>
 
           {isLoading ? (
@@ -209,23 +321,12 @@ export default function Explore() {
               No albums matched your search.
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div
+              className="grid gap-3 sm:gap-4"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+            >
               {visibleAlbums.map((album) => (
-                <div
-                  key={album.id}
-                  className="group relative overflow-hidden rounded-xl border border-black/10 bg-black/70 shadow-[0_16px_30px_-22px_rgba(15,15,15,0.45)]"
-                >
-                  <Link to={`/album/${album.id}`} className="block">
-                    <CoverImage
-                      src={album.cover}
-                      alt={`${album.title} cover`}
-                      className="aspect-[3/4] w-full object-cover transition duration-300 group-hover:scale-105 group-hover:brightness-75"
-                    />
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/65 p-3 opacity-0 transition duration-200 group-hover:opacity-100">
-                      <p className="text-center text-sm font-semibold text-white">{album.artist}</p>
-                    </div>
-                  </Link>
-                </div>
+                <ExploreAlbumTile key={album.id} album={album} />
               ))}
             </div>
           )}

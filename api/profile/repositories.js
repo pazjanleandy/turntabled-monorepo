@@ -145,10 +145,10 @@ export class ProfileRepository {
         "id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,title,cover_art_url,mbid,artist:artist_id(id,name))"
       )
       .eq("user_id", userId)
-      .in("status", ["completed", "favorite"])
+      .in("status", ["listened", "completed", "favorite"])
       .order("updated_at", { ascending: false });
 
-    handleDbError(error, "fetching completed/favorite backlog entries");
+    handleDbError(error, "fetching listened/favorite backlog entries");
     return data ?? [];
   }
 
@@ -197,15 +197,24 @@ export class ProfileRepository {
   async setFavoritesForUser(userId, backlogIds) {
     if (!Array.isArray(backlogIds) || backlogIds.length === 0) return;
 
-    const { error } = await this.supabase
-      .from("backlog")
-      .update({
-        is_favorite: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId)
-      .in("id", backlogIds);
+    const baseTime = Date.now();
+    const total = backlogIds.length;
 
-    handleDbError(error, "setting favorites");
+    for (let index = 0; index < total; index += 1) {
+      const backlogId = backlogIds[index];
+      const orderOffset = total - index;
+      const updatedAt = new Date(baseTime + orderOffset).toISOString();
+
+      const { error } = await this.supabase
+        .from("backlog")
+        .update({
+          is_favorite: true,
+          updated_at: updatedAt,
+        })
+        .eq("user_id", userId)
+        .eq("id", backlogId);
+
+      handleDbError(error, "setting favorites");
+    }
   }
 }

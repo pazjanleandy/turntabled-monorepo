@@ -79,8 +79,9 @@ export class BacklogRepository {
       album_id: item.albumId,
       artist_name_raw: item.artistNameRaw,
       album_title_raw: item.albumTitleRaw,
-      status: item.status ?? "pending",
+      status: item.status ?? "backloggd",
       rating: item.rating,
+      is_favorite: Boolean(item.isFavorite),
       review_text: item.reviewText ?? null,
       reviewed_at: item.reviewedAt ?? null,
       source: item.source ?? "explore",
@@ -101,7 +102,11 @@ export class BacklogRepository {
 
   async updateById(id, patch) {
     const payload = {
+      ...(Object.prototype.hasOwnProperty.call(patch, "status") ? { status: patch.status } : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "rating") ? { rating: patch.rating } : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "is_favorite")
+        ? { is_favorite: patch.is_favorite }
+        : {}),
       ...(Object.prototype.hasOwnProperty.call(patch, "review_text")
         ? { review_text: patch.review_text }
         : {}),
