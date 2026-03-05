@@ -229,13 +229,52 @@ export class AlbumRepository {
     return data;
   }
 
+  async findMissingMetadata(limit = 25) {
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 200) : 25;
+    const { data, error } = await this.supabase
+      .from("album")
+      .select("id,title,normalized_title,artist_id,metadata_source,cover_art_url,artist:artist_id(id,name)")
+      .or("mbid.is.null,metadata_source.eq.seed,cover_art_url.is.null")
+      .order("updated_at", { ascending: true })
+      .limit(safeLimit);
+
+    handleDbError(error, "fetching albums missing metadata");
+    return data ?? [];
+  }
+
+  async hydrateById(id, { artistId, album }) {
+    const payload = {
+      mbid: album?.mbid ?? null,
+      artist_id: artistId,
+      title: album?.title ?? null,
+      normalized_title: normalizeText(album?.title ?? ""),
+      release_date: album?.releaseDate ?? null,
+      primary_type: album?.primaryType ?? null,
+      secondary_types: Array.isArray(album?.secondaryTypes) ? album.secondaryTypes : [],
+      cover_art_url: album?.coverArtUrl ?? null,
+      metadata_source: "musicbrainz",
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await this.supabase
+      .from("album")
+      .update(payload)
+      .eq("id", id)
+      .select("id,mbid,title,normalized_title,artist_id,metadata_source")
+      .single();
+
+    handleDbError(error, "hydrating album metadata by id");
+    return data;
+  }
+
   async findByIds(ids) {
     if (!Array.isArray(ids) || ids.length === 0) return [];
 
     const { data, error } = await this.supabase
       .from("album")
       .select(
-        "id,title,normalized_title,release_date,primary_type,cover_art_url,updated_at,artist:artist_id(id,name,normalized_name,updated_at)"
+        "id,mbid,title,normalized_title,release_date,primary_type,cover_art_url,updated_at,artist:artist_id(id,name,normalized_name,updated_at)"
       )
       .in("id", ids);
 

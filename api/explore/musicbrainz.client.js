@@ -15,7 +15,7 @@ export class MusicBrainzClient {
     const params = new URLSearchParams({
       query,
       fmt: "json",
-      limit: "1",
+      limit: "10",
     });
 
     const response = await fetch(`${this.baseUrl}/release?${params.toString()}`, {
@@ -41,13 +41,22 @@ export class MusicBrainzClient {
       );
     }
 
-    const release = payload?.releases?.[0];
+    const releases = Array.isArray(payload?.releases) ? payload.releases : [];
+    const releaseWithFrontCover = releases.find((entry) => entry?.["cover-art-archive"]?.front === true);
+    const release = releaseWithFrontCover ?? releases[0];
     if (!release) return null;
 
     const artistCredit = Array.isArray(release["artist-credit"])
       ? release["artist-credit"].find((entry) => typeof entry === "object" && entry?.artist)
       : null;
     const artist = artistCredit?.artist;
+
+    const releaseGroupId = release?.["release-group"]?.id ?? null;
+    const coverArtUrl = release?.id
+      ? `https://coverartarchive.org/release/${release.id}/front`
+      : releaseGroupId
+        ? `https://coverartarchive.org/release-group/${releaseGroupId}/front`
+        : null;
 
     return {
       artist: {
@@ -63,9 +72,7 @@ export class MusicBrainzClient {
         releaseDate: release.date ?? null,
         primaryType: release?.["release-group"]?.["primary-type"] ?? null,
         secondaryTypes: release?.["release-group"]?.["secondary-types"] ?? [],
-        coverArtUrl: release?.id
-          ? `https://coverartarchive.org/release/${release.id}/front-500`
-          : null,
+        coverArtUrl,
       },
     };
   }

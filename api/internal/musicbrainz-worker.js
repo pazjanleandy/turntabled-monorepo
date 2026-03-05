@@ -27,11 +27,15 @@ export default async function handler(req, res) {
     const { env, workerService } = buildExploreContainer();
     validateWorkerAuthorization(req, env.EXPLORE_WORKER_SECRET);
 
+    const mode = typeof req.query?.mode === "string" ? req.query.mode.trim().toLowerCase() : "queue";
     const maxJobs = Number.parseInt(req.query?.maxJobs ?? "10", 10);
     const maxRuntimeMs = Number.parseInt(req.query?.maxRuntimeMs ?? "9000", 10);
-    const outcome = await workerService.run({ maxJobs, maxRuntimeMs });
+    const outcome =
+      mode === "backfill"
+        ? await workerService.backfillMissingAlbums({ maxJobs, maxRuntimeMs })
+        : await workerService.run({ maxJobs, maxRuntimeMs });
 
-    sendJson(res, 200, { ok: true, ...outcome }, requestId);
+    sendJson(res, 200, { ok: true, mode, ...outcome }, requestId);
   } catch (error) {
     const mapped = toErrorResponse(error, requestId);
     logError("MusicBrainz worker failed.", {

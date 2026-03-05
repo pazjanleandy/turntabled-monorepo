@@ -116,7 +116,7 @@ export class ExploreService {
           normalizedTitle: album?.normalized_title ?? null,
           releaseDate: album?.release_date ?? null,
           primaryType: album?.primary_type ?? null,
-          coverArtUrl: album?.cover_art_url ?? null,
+          coverArtUrl: album?.cover_art_url ?? (album?.mbid ? `https://coverartarchive.org/release/${album.mbid}/front-500` : null),
           updatedAt: album?.updated_at ?? null,
         },
         artist: {

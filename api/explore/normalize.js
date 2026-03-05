@@ -1,8 +1,8 @@
 export function normalizeText(value) {
   return (value ?? "")
     .toString()
-    .normalize("NFKD")
-    .replace(/[^\w\s-]/g, "")
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");

@@ -64,6 +64,60 @@ export class MusicBrainzWorkerService {
     return { processed, retriesScheduled, permanentlyFailed };
   }
 
+  async backfillMissingAlbums({ maxJobs = 10, maxRuntimeMs = 9000 } = {}) {
+    const startedAt = Date.now();
+    let processed = 0;
+    let hydrated = 0;
+    let notFound = 0;
+    let failed = 0;
+
+    while (processed < maxJobs && Date.now() - startedAt < maxRuntimeMs) {
+      const remaining = maxJobs - processed;
+      const candidates = await this.albumRepository.findMissingMetadata(Math.min(remaining, 25));
+      if (!Array.isArray(candidates) || candidates.length === 0) break;
+
+      for (const candidate of candidates) {
+        if (processed >= maxJobs || Date.now() - startedAt >= maxRuntimeMs) break;
+        processed += 1;
+
+        const artistName = candidate?.artist?.name;
+        const albumTitle = candidate?.title;
+        if (
+          typeof artistName !== "string" ||
+          !artistName.trim() ||
+          typeof albumTitle !== "string" ||
+          !albumTitle.trim()
+        ) {
+          failed += 1;
+          continue;
+        }
+
+        const rateGateAcquired = await this.queueService.acquireRateGate();
+        if (!rateGateAcquired) {
+          await this.sleep(250);
+          processed -= 1;
+          continue;
+        }
+
+        try {
+          const metadata = await this.musicBrainzClient.findAlbum(artistName.trim(), albumTitle.trim());
+          if (!metadata) {
+            notFound += 1;
+            continue;
+          }
+
+          const artist = await this.artistRepository.upsertFromMusicBrainz(metadata.artist);
+          await this.albumRepository.hydrateById(candidate.id, { artistId: artist.id, album: metadata.album });
+          hydrated += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+    }
+
+    return { processed, hydrated, notFound, failed };
+  }
+
   sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
