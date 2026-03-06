@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
@@ -38,16 +38,20 @@ export default function Explore() {
   const [genreFilter, setGenreFilter] = useState('all')
   const [apiAlbums, setApiAlbums] = useState([])
   const [totalAlbums, setTotalAlbums] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [currentFetchPage, setCurrentFetchPage] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const lastFetchAtRef = useRef(0)
+  const authEpochRef = useRef(0)
+  const fetchedPageSetRef = useRef(new Set())
+  const fetchingPageSetRef = useRef(new Set())
+  const fetchedIdSetRef = useRef(new Set())
+  const hasMoreRef = useRef(true)
+  const currentFetchPageRef = useRef(0)
   const fallbackFilter = FILTER_OPTIONS[0]?.value ?? 'a-z'
   const activeFilter = searchParams.get('filter') ?? fallbackFilter
   const activePage = parsePositiveInt(searchParams.get('page'), 1)
-  const totalPages = useMemo(() => {
-    if (totalAlbums < 1) return 1
-    return Math.max(1, Math.ceil(totalAlbums / PAGE_SIZE))
-  }, [totalAlbums])
 
   const handlePageChange = (nextPage) => {
     const safePage = Math.min(Math.max(nextPage, 1), totalPages)
@@ -63,127 +67,192 @@ export default function Explore() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  useEffect(() => {
-    let cancelled = false
-    const controller = new AbortController()
-    let debounceTimer = null
+  const mapApiAlbum = useCallback((item) => {
+    const albumId =
+      typeof item?.albumId === 'string' && item.albumId.trim()
+        ? item.albumId.trim()
+        : null
+    if (!albumId) return null
 
-    const loadExploreAlbums = async () => {
-      setIsLoading(true)
-      setLoadError('')
+    const title = item?.albumTitle ?? 'Unknown Album'
+    const artist = item?.artistName ?? 'Unknown Artist'
+    const sourceGenres = Array.isArray(item?.genres) ? item.genres : []
+    const primaryType =
+      typeof item?.primaryType === 'string' && item.primaryType.trim()
+        ? item.primaryType.trim()
+        : ''
+    const genres = sourceGenres
+      .map((value) => String(value).trim())
+      .filter(Boolean)
 
-      try {
-        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
-        const username = window.localStorage.getItem('lastfmUsername')
-        const headers = {}
-        const { data } = await supabase.auth.getSession()
-        const userId = data?.session?.user?.id
-
-        if (userId) {
-          headers['x-user-id'] = userId
-        }
-        if (username) {
-          headers['x-username'] = username
-        }
-
-        const minIntervalMs = 1000
-        const elapsedMs = Date.now() - lastFetchAtRef.current
-        if (elapsedMs < minIntervalMs) {
-          await new Promise((resolve) => {
-            setTimeout(resolve, minIntervalMs - elapsedMs)
-          })
-        }
-
-        const response = await fetch(`${apiBase}/api/explore?page=${activePage}&limit=${PAGE_SIZE}`, {
-          headers,
-          signal: controller.signal,
-        })
-        lastFetchAtRef.current = Date.now()
-
-        if (!response.ok) {
-          throw new Error('Failed to load explore albums.')
-        }
-
-        const payload = await response.json()
-        const items = Array.isArray(payload?.items) ? payload.items : []
-        const total = Number(payload?.total)
-        const safeTotal = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
-
-        const mapped = items.map((item) => {
-          const title = item?.albumTitle ?? 'Unknown Album'
-          const artist = item?.artistName ?? 'Unknown Artist'
-          const albumId = item?.albumId ?? null
-          const sourceGenres = Array.isArray(item?.genres) ? item.genres : []
-          const primaryType =
-            typeof item?.primaryType === 'string' && item.primaryType.trim()
-              ? item.primaryType.trim()
-              : ''
-          const genres = sourceGenres
-            .map((value) => String(value).trim())
-            .filter(Boolean)
-
-          if (genres.length === 0 && primaryType) {
-            genres.push(primaryType)
-          }
-
-          const releaseYear =
-            parseYearCandidate(item?.releaseDate) ||
-            parseYearCandidate(item?.lastSyncedAt) ||
-            0
-
-          return {
-            id: item?.backlogId ?? item?.albumId ?? `${artist}-${title}`,
-            albumId,
-            title,
-            artist,
-            cover: item?.coverArtUrl || '/album/am.jpg',
-            year: releaseYear ? String(releaseYear) : '0',
-            genres,
-          }
-        })
-
-        if (!cancelled) {
-          setApiAlbums(mapped)
-          setTotalAlbums(safeTotal)
-        }
-
-      } catch (error) {
-        if (error?.name === 'AbortError') return
-        if (!cancelled) {
-          setLoadError(error?.message ?? 'Unable to load albums.')
-          setApiAlbums([])
-          setTotalAlbums(0)
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
-      }
+    if (genres.length === 0 && primaryType) {
+      genres.push(primaryType)
     }
 
-    debounceTimer = setTimeout(() => {
-      loadExploreAlbums()
-    }, 250)
+    const releaseYear =
+      parseYearCandidate(item?.releaseDate) ||
+      parseYearCandidate(item?.lastSyncedAt) ||
+      0
+
+    return {
+      id: albumId,
+      albumId,
+      title,
+      artist,
+      cover: item?.coverArtUrl || '/album/am.jpg',
+      year: releaseYear ? String(releaseYear) : '0',
+      genres,
+    }
+  }, [])
+
+  const resetExploreState = useCallback(() => {
+    setApiAlbums([])
+    setTotalAlbums(0)
+    setHasMore(true)
+    setCurrentFetchPage(0)
+    setIsLoading(false)
+    setLoadError('')
+    fetchedPageSetRef.current.clear()
+    fetchingPageSetRef.current.clear()
+    fetchedIdSetRef.current.clear()
+    hasMoreRef.current = true
+    currentFetchPageRef.current = 0
+  }, [])
+
+  const fetchExplorePage = useCallback(async (page) => {
+    if (!isSignedIn) return { fetched: false, reason: 'signed-out' }
+    if (!Number.isInteger(page) || page < 1) return { fetched: false, reason: 'invalid-page' }
+    if (fetchedPageSetRef.current.has(page)) return { fetched: false, reason: 'already-fetched' }
+    if (fetchingPageSetRef.current.has(page)) return { fetched: false, reason: 'already-fetching' }
+    if (!hasMoreRef.current && page > currentFetchPageRef.current + 1) {
+      return { fetched: false, reason: 'no-more' }
+    }
+
+    const runEpoch = authEpochRef.current
+    fetchingPageSetRef.current.add(page)
+    setIsLoading(true)
+
+    try {
+      const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+      const username = window.localStorage.getItem('lastfmUsername')
+      const headers = {}
+      const { data } = await supabase.auth.getSession()
+      const userId = data?.session?.user?.id
+
+      if (userId) {
+        headers['x-user-id'] = userId
+      }
+      if (username) {
+        headers['x-username'] = username
+      }
+
+      const minIntervalMs = 500
+      const elapsedMs = Date.now() - lastFetchAtRef.current
+      if (elapsedMs < minIntervalMs) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, minIntervalMs - elapsedMs)
+        })
+      }
+
+      const response = await fetch(`${apiBase}/api/explore?page=${page}&limit=${PAGE_SIZE}`, {
+        headers,
+      })
+      lastFetchAtRef.current = Date.now()
+
+      if (!response.ok) {
+        throw new Error('Failed to load explore albums.')
+      }
+
+      const payload = await response.json()
+      const items = Array.isArray(payload?.items) ? payload.items : []
+      const mappedItems = items.map(mapApiAlbum).filter(Boolean)
+      const total = Number(payload?.total)
+      const safeTotal = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
+      const totalPagesFromApi = Math.max(1, Math.ceil(safeTotal / PAGE_SIZE))
+      const nextHasMore = page < totalPagesFromApi
+
+      if (runEpoch !== authEpochRef.current) {
+        return { fetched: false, reason: 'stale-run' }
+      }
+
+      setTotalAlbums(safeTotal)
+      setHasMore(nextHasMore)
+      setCurrentFetchPage((prev) => Math.max(prev, page))
+      setApiAlbums((prev) => {
+        // Merge by id to prevent duplicate cards when pages overlap in dev/strict reruns.
+        const byId = new Map()
+        for (const album of prev) {
+          if (!album?.id) continue
+          byId.set(album.id, album)
+        }
+        for (const album of mappedItems) {
+          if (!album?.id) continue
+          byId.set(album.id, album)
+          fetchedIdSetRef.current.add(album.id)
+        }
+        return Array.from(byId.values())
+      })
+
+      fetchedPageSetRef.current.add(page)
+      currentFetchPageRef.current = Math.max(currentFetchPageRef.current, page)
+      hasMoreRef.current = nextHasMore
+      setLoadError('')
+      return { fetched: true }
+    } catch (error) {
+      if (runEpoch !== authEpochRef.current) {
+        return { fetched: false, reason: 'stale-run' }
+      }
+      setLoadError(error?.message ?? 'Unable to load albums.')
+      return { fetched: false, reason: 'error' }
+    } finally {
+      fetchingPageSetRef.current.delete(page)
+      if (fetchingPageSetRef.current.size === 0) {
+        setIsLoading(false)
+      }
+    }
+  }, [isSignedIn, mapApiAlbum])
+
+  useEffect(() => {
+    authEpochRef.current += 1
+    const currentAuthEpoch = authEpochRef.current
+
+    if (!isSignedIn) {
+      resetExploreState()
+      return undefined
+    }
+
+    // Reset + bootstrap per auth epoch. In Strict Mode dev, the first run is
+    // invalidated by authEpoch and the second run becomes the authoritative fetch.
+    resetExploreState()
+
+    let cancelled = false
+    const bootstrap = async () => {
+      if (cancelled || currentAuthEpoch !== authEpochRef.current) return
+      await fetchExplorePage(1)
+    }
+    bootstrap()
 
     return () => {
       cancelled = true
-      controller.abort()
-      if (debounceTimer) {
-        clearTimeout(debounceTimer)
-      }
     }
-  }, [isSignedIn, activePage])
+  }, [isSignedIn, fetchExplorePage, resetExploreState])
 
   useEffect(() => {
-    if (totalAlbums < 1 || activePage <= totalPages) return
-    const nextParams = new URLSearchParams(searchParams)
-    if (totalPages === 1) {
-      nextParams.delete('page')
-    } else {
-      nextParams.set('page', String(totalPages))
+    if (!isSignedIn) return undefined
+    let cancelled = false
+
+    const ensurePageLoaded = async () => {
+      for (let page = 1; page <= activePage; page += 1) {
+        if (cancelled) return
+        await fetchExplorePage(page)
+      }
     }
-    setSearchParams(nextParams, { replace: true })
-  }, [activePage, totalAlbums, totalPages, searchParams, setSearchParams])
+
+    ensurePageLoaded()
+    return () => {
+      cancelled = true
+    }
+  }, [isSignedIn, activePage, fetchExplorePage])
 
   const albums = useMemo(() => apiAlbums, [apiAlbums])
 
@@ -256,10 +325,87 @@ export default function Explore() {
     return sorted
   }, [albums, query, activeFilter, decadeFilter, genreFilter])
 
+  const hasClientFilters =
+    query.trim().length > 0 ||
+    decadeFilter !== 'all' ||
+    genreFilter !== 'all'
+
+  const totalPages = useMemo(
+    () =>
+      Math.max(
+        1,
+        Math.ceil((hasClientFilters ? visibleAlbums.length : totalAlbums) / PAGE_SIZE),
+      ),
+    [hasClientFilters, visibleAlbums.length, totalAlbums]
+  )
+
+  const paginatedVisibleAlbums = useMemo(() => {
+    const start = (activePage - 1) * PAGE_SIZE
+    return visibleAlbums.slice(start, start + PAGE_SIZE)
+  }, [visibleAlbums, activePage])
+
+  useEffect(() => {
+    if (!isSignedIn || !hasClientFilters || !hasMore) return undefined
+    let cancelled = false
+
+    const hydrateRemainingCatalog = async () => {
+      let nextPage = currentFetchPage + 1
+      while (!cancelled && hasMoreRef.current) {
+        const result = await fetchExplorePage(nextPage)
+        if (!result?.fetched) break
+        nextPage += 1
+      }
+    }
+
+    hydrateRemainingCatalog()
+    return () => {
+      cancelled = true
+    }
+  }, [isSignedIn, hasClientFilters, hasMore, currentFetchPage, fetchExplorePage])
+
+  useEffect(() => {
+    if (!hasClientFilters && totalAlbums === 0 && isLoading) return
+    if (activePage <= totalPages) return
+    const nextParams = new URLSearchParams(searchParams)
+    if (totalPages === 1) {
+      nextParams.delete('page')
+    } else {
+      nextParams.set('page', String(totalPages))
+    }
+    setSearchParams(nextParams, { replace: true })
+  }, [activePage, totalPages, searchParams, setSearchParams, hasClientFilters, totalAlbums, isLoading])
+
+  const handleSearchChange = (event) => {
+    setQuery(event.target.value)
+    if (activePage === 1) return
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('page')
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  const handleDecadeFilterChange = (event) => {
+    setDecadeFilter(event.target.value)
+    if (activePage === 1) return
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('page')
+    setSearchParams(nextParams)
+  }
+
+  const handleGenreFilterChange = (event) => {
+    setGenreFilter(event.target.value)
+    if (activePage === 1) return
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('page')
+    setSearchParams(nextParams)
+  }
+
   const handleFilterChange = (event) => {
     const next = event.target.value
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('filter', next)
+    if (activePage !== 1) {
+      nextParams.delete('page')
+    }
     setSearchParams(nextParams)
   }
 
@@ -280,7 +426,7 @@ export default function Explore() {
             <input
               type="text"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={handleSearchChange}
               placeholder="Search albums, artists, or lists"
               className="w-full rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             />
@@ -290,7 +436,7 @@ export default function Explore() {
               <span className="sr-only">Filter by decade</span>
               <select
                 value={decadeFilter}
-                onChange={(event) => setDecadeFilter(event.target.value)}
+                onChange={handleDecadeFilterChange}
                 className="min-w-[170px] rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
               >
                 <option value="all">All decades</option>
@@ -306,7 +452,7 @@ export default function Explore() {
               <span className="sr-only">Filter by genre</span>
               <select
                 value={genreFilter}
-                onChange={(event) => setGenreFilter(event.target.value)}
+                onChange={handleGenreFilterChange}
                 className="min-w-[170px] rounded-xl border border-black/10 bg-white px-3.5 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
               >
                 <option value="all">All genres</option>
@@ -371,7 +517,7 @@ export default function Explore() {
                 className="grid gap-3 sm:gap-4"
                 style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
               >
-                {visibleAlbums.map((album) => (
+                {paginatedVisibleAlbums.map((album) => (
                   <ExploreAlbumTile key={album.id} album={album} />
                 ))}
               </div>

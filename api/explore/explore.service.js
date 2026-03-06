@@ -142,12 +142,12 @@ export class ExploreService {
     };
   }
 
-  async getAlbumDetails(id) {
+  async getAlbumDetails(id, viewerUserId = null) {
     const fromAlbum = await this.albumRepository.findDetailedById(id);
     if (fromAlbum) {
       const [tracks, reviews] = await Promise.all([
         this.getTracklistForAlbumSafe(fromAlbum),
-        this.getAlbumReviews({ album: fromAlbum }),
+        this.getAlbumReviews({ album: fromAlbum, viewerUserId }),
       ]);
       return this.mapAlbumDetails(fromAlbum, null, tracks, reviews);
     }
@@ -180,7 +180,7 @@ export class ExploreService {
         createdAt: new Date().toISOString(),
       };
       await this.queueService.enqueueIfMissing(job);
-      const reviews = await this.getAlbumReviews({ backlogItem });
+      const reviews = await this.getAlbumReviews({ backlogItem, viewerUserId });
       return this.mapAlbumDetails(null, backlogItem, [], reviews);
     }
 
@@ -190,12 +190,12 @@ export class ExploreService {
 
     const [tracks, reviews] = await Promise.all([
       this.getTracklistForAlbumSafe(album),
-      this.getAlbumReviews({ album, backlogItem }),
+      this.getAlbumReviews({ album, backlogItem, viewerUserId }),
     ]);
     return this.mapAlbumDetails(album, backlogItem, tracks, reviews);
   }
 
-  async getAlbumReviews({ album = null, backlogItem = null, limit = 25 } = {}) {
+  async getAlbumReviews({ album = null, backlogItem = null, viewerUserId = null, limit = 25 } = {}) {
     const rows = await this.backlogRepository.listReviewsForAlbum({
       albumId: album?.id ?? null,
       artistNameRaw: backlogItem?.artist_name_raw ?? album?.artist?.name ?? null,
@@ -209,7 +209,51 @@ export class ExploreService {
 
     if (reviews.length === 0) return [];
 
-    const userIds = [...new Set(reviews.map((row) => row?.user_id).filter((value) => typeof value === "string" && value.trim()))];
+    const reviewBacklogIds = [
+      ...new Set(
+        reviews.map((row) => row?.id).filter((value) => typeof value === "string" && value.trim())
+      ),
+    ];
+    const [likeRows, commentRows] = await Promise.all([
+      this.backlogRepository.listReviewLikesForBacklogIds(reviewBacklogIds),
+      this.backlogRepository.listReviewCommentsForBacklogIds(reviewBacklogIds),
+    ]);
+
+    const likesByBacklogId = new Map();
+    for (const row of Array.isArray(likeRows) ? likeRows : []) {
+      const backlogId = row?.backlog_id;
+      const userId = row?.user_id;
+      if (typeof backlogId !== "string" || !backlogId.trim()) continue;
+      if (typeof userId !== "string" || !userId.trim()) continue;
+
+      let entry = likesByBacklogId.get(backlogId);
+      if (!entry) {
+        entry = { count: 0, userIds: new Set() };
+        likesByBacklogId.set(backlogId, entry);
+      }
+      if (!entry.userIds.has(userId)) {
+        entry.userIds.add(userId);
+        entry.count += 1;
+      }
+    }
+
+    const commentsByBacklogId = new Map();
+    for (const row of Array.isArray(commentRows) ? commentRows : []) {
+      const backlogId = row?.backlog_id;
+      if (typeof backlogId !== "string" || !backlogId.trim()) continue;
+      const current = commentsByBacklogId.get(backlogId) ?? [];
+      current.push(row);
+      commentsByBacklogId.set(backlogId, current);
+    }
+
+    const userIds = [
+      ...new Set(
+        [
+          ...reviews.map((row) => row?.user_id),
+          ...(Array.isArray(commentRows) ? commentRows.map((row) => row?.user_id) : []),
+        ].filter((value) => typeof value === "string" && value.trim())
+      ),
+    ];
     const [users, profileMediaRows] = await Promise.all([
       this.userRepository.findPublicByIds(userIds),
       this.profileMediaRepository.listByUserIds(userIds),
@@ -222,6 +266,8 @@ export class ExploreService {
       const media = profileMediaById.get(row.user_id);
       const username =
         typeof user?.username === "string" && user.username.trim() ? user.username.trim() : "unknown-user";
+      const likeMeta = likesByBacklogId.get(row.id) ?? { count: 0, userIds: new Set() };
+      const reviewComments = commentsByBacklogId.get(row.id) ?? [];
 
       return {
         backlogId: row.id,
@@ -231,6 +277,37 @@ export class ExploreService {
         reviewedAt: row.reviewed_at ?? null,
         addedAt: row.added_at ?? null,
         updatedAt: row.updated_at ?? null,
+        likeCount: likeMeta.count,
+        viewerHasLiked:
+          typeof viewerUserId === "string" && viewerUserId.trim()
+            ? likeMeta.userIds.has(viewerUserId)
+            : false,
+        commentCount: reviewComments.length,
+        comments: reviewComments.map((commentRow) => {
+          const commentUser = usersById.get(commentRow.user_id);
+          const commentMedia = profileMediaById.get(commentRow.user_id);
+          const commentUsername =
+            typeof commentUser?.username === "string" && commentUser.username.trim()
+              ? commentUser.username.trim()
+              : "unknown-user";
+
+          return {
+            id: commentRow.id,
+            backlogId: commentRow.backlog_id,
+            commentText: commentRow.comment_text ?? "",
+            createdAt: commentRow.created_at ?? null,
+            updatedAt: commentRow.updated_at ?? null,
+            user: {
+              id: commentRow.user_id ?? null,
+              username: commentUsername,
+              avatarUrl: resolvePublicAvatarUrl(
+                commentUser?.avatar_url,
+                commentMedia?.avatar_path,
+                this.supabaseUrl
+              ),
+            },
+          };
+        }),
         user: {
           id: row.user_id ?? null,
           username,

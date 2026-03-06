@@ -1,6 +1,7 @@
 import { toErrorResponse, ValidationError } from "../_lib/errors.js";
 import { getRequestId, sendJson } from "../_lib/http.js";
 import { logError } from "../_lib/logger.js";
+import { resolveOptionalUserId } from "./auth.js";
 import { buildExploreContainer } from "./container.js";
 
 export default async function handler(req, res) {
@@ -17,8 +18,9 @@ export default async function handler(req, res) {
       throw new ValidationError("Query param 'id' is required.");
     }
 
-    const { exploreService } = buildExploreContainer();
-    const album = await exploreService.getAlbumDetails(id.trim());
+    const { supabase, exploreService } = buildExploreContainer();
+    const userId = await resolveOptionalUserId(req, supabase);
+    const album = await exploreService.getAlbumDetails(id.trim(), userId);
 
     if (!album) {
       sendJson(

@@ -20,6 +20,25 @@ function formatRating(value) {
   return Number.isInteger(numeric) ? `${numeric}.0` : numeric.toFixed(1)
 }
 
+const STATUS_STYLES = {
+  listened: { label: 'Listened', dotClass: 'bg-emerald-400' },
+  listening: { label: 'Listening', dotClass: 'bg-blue-500' },
+  unfinished: { label: 'Unfinished', dotClass: 'bg-amber-500' },
+  backloggd: { label: 'Backloggd', dotClass: 'bg-slate-400' },
+}
+
+function formatStatusLabel(value) {
+  if (typeof value !== 'string') return 'Unknown'
+  const normalized = value.trim()
+  if (!normalized) return 'Unknown'
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+function getStatusMeta(value) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return STATUS_STYLES[normalized] ?? { label: formatStatusLabel(value), dotClass: 'bg-slate-300' }
+}
+
 export default function AlbumGridItem({
   item,
   density = 'comfortable',
@@ -35,6 +54,7 @@ export default function AlbumGridItem({
   const coverSrc = item?.coverArtUrl ?? item?.cover ?? '/album/am.jpg'
   const releaseId = item?.albumId ?? item?.releaseId ?? ''
   const loggedAt = item?.listenedOn ?? item?.addedAt ?? item?.updatedAt ?? ''
+  const statusMeta = getStatusMeta(item?.status)
   const detailHref = releaseId ? `/album/${releaseId}` : ''
 
   useEffect(() => {
@@ -81,6 +101,7 @@ export default function AlbumGridItem({
             to={detailHref}
             className="block overflow-hidden border border-black/10 bg-black/5 shadow-subtle transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
             aria-label={`View ${albumTitle} details`}
+            title={`${albumTitle} by ${artistName}`}
           >
             <AlbumCover
               src={coverSrc}
@@ -89,7 +110,10 @@ export default function AlbumGridItem({
             />
           </Link>
         ) : (
-          <div className="overflow-hidden border border-black/10 bg-black/5 shadow-subtle">
+          <div
+            className="overflow-hidden border border-black/10 bg-black/5 shadow-subtle"
+            title={`${albumTitle} by ${artistName}`}
+          >
             <AlbumCover src={coverSrc} alt={`${albumTitle} by ${artistName} cover`} />
           </div>
         )}
@@ -159,6 +183,12 @@ export default function AlbumGridItem({
         className={`flex items-center justify-between text-muted ${metaTextSize} font-semibold uppercase tracking-[0.12em]`}
       >
         <span className="inline-flex items-center gap-1 text-text">
+          <span
+            className={`h-2 w-2 rounded-full ${statusMeta.dotClass}`}
+            title={`Status: ${statusMeta.label}`}
+            aria-hidden="true"
+          />
+          <span className="sr-only">{`Status: ${statusMeta.label}`}</span>
           <Star size={12} weight="fill" className="text-amber-500" />
           {formatRating(item?.rating)}
         </span>

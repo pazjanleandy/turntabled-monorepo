@@ -31,6 +31,7 @@ Last updated: March 6, 2026.
 1. Install Vercel CLI: `npm install -g vercel`
 2. Start backend in terminal 1: `vercel dev --listen 3001`
 3. Start frontend in terminal 2: `npm run dev`
+4. Apply DB migrations (when schema changes): `npx supabase db push --include-all`
 
 Why two terminals:
 - Backend API runs via `vercel dev` on port `3001`
@@ -176,6 +177,33 @@ Use `.env.example` as the template.
 - Explore pagination:
   - added page-based pagination with 48 albums per page
   - page state now reads/writes via query param (`?page=`) with next/previous controls
+- Logged page polish:
+  - album cover hover now shows title + artist tooltip (same behavior as Explore tiles)
+  - rating metadata now includes a status color dot (`listened`, `listening`, `unfinished`, `backloggd`)
+- Album page rating sync:
+  - `Log this album` star row now reflects the user’s current logged rating instead of always showing empty stars
+- Review interactions (new):
+  - added review likes + comments persistence with migration `db/migrations/20260306_review_interactions.sql`
+  - new review interaction endpoints:
+    - `PATCH /api/backlog/reviews-likes`
+    - `POST /api/backlog/reviews-comments`
+    - `PATCH /api/backlog/reviews-comments`
+    - `DELETE /api/backlog/reviews-comments?id=<commentId>`
+  - `/api/explore/album` review payload now includes:
+    - `likeCount`
+    - `viewerHasLiked`
+    - `commentCount`
+    - `comments[]` with commenter profile metadata
+- Album review thread UX refresh:
+  - like/comment actions now support optimistic updates and ownership-aware comment editing/deletion
+  - own-comment actions moved into a `...` overflow menu
+  - comments UI refactored to a denser, cleaner threaded layout with integrated composer
+  - commenter profile photos are shown inside comment rows
+  - heart/comment actions are icon + count controls (no pill chrome)
+  - action icons are larger and liked hearts render orange
+- Local environment cleanup:
+  - standardized local API base to `http://localhost:3001`
+  - removed duplicate `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` entries from `.env`
 
 ### Mar 5, 2026
 

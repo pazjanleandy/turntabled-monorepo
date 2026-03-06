@@ -101,6 +101,39 @@ export class BacklogRepository {
     handleDbError(error, "fetching album reviews");
     return data ?? [];
   }
+
+  async listReviewLikesForBacklogIds(backlogIds) {
+    const ids = Array.isArray(backlogIds)
+      ? backlogIds.filter((value) => typeof value === "string" && value.trim())
+      : [];
+    if (ids.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("review_likes")
+      .select("backlog_id,user_id")
+      .in("backlog_id", ids);
+
+    handleDbError(error, "fetching review likes");
+    return data ?? [];
+  }
+
+  async listReviewCommentsForBacklogIds(backlogIds, limit = 500) {
+    const ids = Array.isArray(backlogIds)
+      ? backlogIds.filter((value) => typeof value === "string" && value.trim())
+      : [];
+    if (ids.length === 0) return [];
+
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 2000) : 500;
+    const { data, error } = await this.supabase
+      .from("review_comments")
+      .select("id,backlog_id,user_id,comment_text,created_at,updated_at")
+      .in("backlog_id", ids)
+      .order("created_at", { ascending: true })
+      .limit(safeLimit);
+
+    handleDbError(error, "fetching review comments");
+    return data ?? [];
+  }
 }
 
 export class ArtistRepository {
@@ -152,14 +185,15 @@ export class AlbumRepository {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
+    // Stable ordering prevents overlapping windows when paginating with range(from, to).
     const { data, error, count } = await this.supabase
       .from("album")
       .select(
         "id,mbid,title,release_date,primary_type,secondary_types,cover_art_url,last_synced_at,artist:artist_id(id,name)",
         { count: "exact" }
       )
-      .order("last_synced_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .range(from, to);
 
     handleDbError(error, "fetching latest albums for explore");
