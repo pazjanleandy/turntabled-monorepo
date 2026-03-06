@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import CoverImage from '../CoverImage.jsx'
-import StarRating from '../StarRating.jsx'
 
 const actionButtonClass =
   'rounded-xl border border-black/10 bg-white/85 px-3 py-2 text-xs font-semibold text-text shadow-none transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
@@ -11,8 +10,6 @@ export default function FavoritesSection({
   favoriteCovers,
   recentCarousel,
   isLoadingRecent = false,
-  recentRatings,
-  onRecentRatingChange,
   onManageFavorites = null,
   manageLabel = 'Manage',
   manageDisabled = false,
@@ -175,15 +172,6 @@ export default function FavoritesSection({
                             {item.artist}
                           </p>
                         )}
-                        <StarRating
-                          value={recentRatings[`${item.artist} - ${item.title}`] ?? item.rating ?? 0}
-                          onChange={(next) =>
-                            onRecentRatingChange(`${item.artist} - ${item.title}`, next)
-                          }
-                          step={0.5}
-                          size={14}
-                          className="mt-1"
-                        />
                       </div>
                     </article>
                   ))}

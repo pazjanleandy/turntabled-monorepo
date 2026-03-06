@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
+import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
@@ -83,6 +84,52 @@ function mapCompletedToCarousel(items = []) {
   }))
 }
 
+function mapRecentlyListenedToCarousel(items = []) {
+  return (Array.isArray(items) ? items : []).slice(0, 5).map((item, index) => ({
+    id: `${item?.source ?? 'recent'}-${item?.played_at ?? item?.logged_at ?? ''}-${index}`,
+    title: item?.album ?? item?.track ?? 'Unknown album',
+    artist: item?.artist ?? 'Unknown artist',
+    cover: item?.cover_art || '/album/am.jpg',
+    rating: 0,
+  }))
+}
+
+function mapRecentlyListenedToTracks(items = []) {
+  return (Array.isArray(items) ? items : []).map((item) => ({
+    name: item?.track || item?.album || 'Unknown track',
+    artist: item?.artist || 'Unknown artist',
+    album: item?.album || '',
+    nowPlaying: item?.played_at == null && item?.source === 'lastfm',
+  }))
+}
+
+function pickLastFmCoverArt(images = []) {
+  if (!Array.isArray(images)) return ''
+  const orderedSizes = ['mega', 'extralarge', 'large', 'medium', 'small']
+  for (const size of orderedSizes) {
+    const match = images.find((item) => item?.size === size && typeof item?.['#text'] === 'string')
+    const url = typeof match?.['#text'] === 'string' ? match['#text'].trim() : ''
+    if (url) return url
+  }
+  return ''
+}
+
+function mapLastFmTrackRowsToUnified(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((track) => {
+    const uts = typeof track?.date?.uts === 'string' ? track.date.uts.trim() : ''
+    const playedAt = uts ? new Date(Number.parseInt(uts, 10) * 1000).toISOString() : null
+    return {
+      source: 'lastfm',
+      track: track?.name ?? null,
+      artist: track?.artist?.['#text'] ?? null,
+      album: track?.album?.['#text'] ?? null,
+      played_at: playedAt,
+      logged_at: null,
+      cover_art: pickLastFmCoverArt(track?.image),
+    }
+  })
+}
+
 function toTimestamp(value) {
   const parsed = Date.parse(value ?? '')
   return Number.isNaN(parsed) ? 0 : parsed
@@ -142,6 +189,9 @@ export default function FriendProfile() {
   const [payload, setPayload] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [recentlyListened, setRecentlyListened] = useState([])
+  const [recentlyListenedLoading, setRecentlyListenedLoading] = useState(false)
+  const [recentlyListenedError, setRecentlyListenedError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -164,6 +214,7 @@ export default function FriendProfile() {
 
       setIsLoading(true)
       setError('')
+      setRecentlyListenedError('')
 
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
@@ -181,14 +232,70 @@ export default function FriendProfile() {
           throw new Error(result?.error?.message ?? 'Failed to load profile.')
         }
 
+        setRecentlyListenedLoading(true)
+
+        let recentPayload = null
+        let recentResponseOk = false
+        const ownerLastfmUsername =
+          typeof result?.user?.lastfmUsername === 'string' ? result.user.lastfmUsername.trim() : ''
+        const lastfmApiKey = import.meta.env.VITE_LASTFM_API_KEY
+
+        if (ownerLastfmUsername && typeof lastfmApiKey === 'string' && lastfmApiKey.trim()) {
+          const params = new URLSearchParams({
+            method: 'user.getRecentTracks',
+            user: ownerLastfmUsername,
+            api_key: lastfmApiKey.trim(),
+            format: 'json',
+            limit: '5',
+          })
+          const lastfmResponse = await fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, {
+            cache: 'no-store',
+          })
+          const lastfmData = await lastfmResponse.json().catch(() => null)
+          if (lastfmResponse.ok && !lastfmData?.error) {
+            const rows = Array.isArray(lastfmData?.recenttracks?.track)
+              ? lastfmData.recenttracks.track
+              : []
+            recentPayload = mapLastFmTrackRowsToUnified(rows)
+            recentResponseOk = true
+          }
+        }
+
+        if (!recentResponseOk) {
+          const recentIdentifier =
+            typeof result?.user?.id === 'string' && result.user.id.trim()
+              ? result.user.id.trim()
+              : typeof result?.user?.username === 'string' && result.user.username.trim()
+                ? result.user.username.trim()
+                : normalizedTarget.replace(/^@/, '')
+          const recentResponse = await fetch(
+            `${apiBase}/api/users/${encodeURIComponent(recentIdentifier)}/recently-listened`,
+            {
+              headers,
+              cache: 'no-store',
+            },
+          )
+          recentPayload = await recentResponse.json().catch(() => null)
+          recentResponseOk = recentResponse.ok
+        }
+
         if (cancelled) return
         setPayload(result)
+        if (recentResponseOk && Array.isArray(recentPayload)) {
+          setRecentlyListened(recentPayload)
+          setRecentlyListenedError('')
+        } else {
+          setRecentlyListened([])
+          setRecentlyListenedError('This user has no public recent listening activity.')
+        }
       } catch (loadError) {
         if (cancelled) return
         setPayload(null)
         setError(loadError?.message ?? 'Failed to load profile.')
+        setRecentlyListened([])
       } finally {
         if (!cancelled) {
+          setRecentlyListenedLoading(false)
           setIsLoading(false)
         }
       }
@@ -214,7 +321,14 @@ export default function FriendProfile() {
       }),
     [payload],
   )
-  const recentCarousel = useMemo(() => mapCompletedToCarousel(publicActivity), [publicActivity])
+  const recentCarousel = useMemo(
+    () =>
+      recentlyListened.length > 0
+        ? mapRecentlyListenedToCarousel(recentlyListened)
+        : mapCompletedToCarousel(publicActivity),
+    [publicActivity, recentlyListened],
+  )
+  const recentTracks = useMemo(() => mapRecentlyListenedToTracks(recentlyListened), [recentlyListened])
   const recent = useMemo(() => mapCompletedToRecent(publicActivity), [publicActivity])
   const reviewList = useMemo(
     () => mapReviews(Array.isArray(payload?.reviews) ? payload.reviews : []),
@@ -224,8 +338,6 @@ export default function FriendProfile() {
   const favoriteCovers = useAlbumCovers(favorites)
   const { ratings: favoriteRatings, updateRating: handleFavoriteRatingChange } =
     useAlbumRatings(favorites)
-  const { ratings: recentRatings, updateRating: handleRecentRatingChange } =
-    useAlbumRatings(recentCarousel)
 
   const user = useMemo(() => {
     const username = payload?.user?.username?.trim() || 'unknown'
@@ -321,8 +433,7 @@ export default function FriendProfile() {
                       favoriteRatings={favoriteRatings}
                       onFavoriteRatingChange={handleFavoriteRatingChange}
                       recentCarousel={recentCarousel}
-                      recentRatings={recentRatings}
-                      onRecentRatingChange={handleRecentRatingChange}
+                      isLoadingRecent={recentlyListenedLoading}
                     />
                     <ReviewsSection reviews={reviewList} asCard={false} />
                   </aside>
@@ -368,6 +479,13 @@ export default function FriendProfile() {
                     </section>
 
                     <LatestLogsSection recent={recent} asCard={false} />
+                    <LastFmRecentTracks
+                      username={payload?.user?.username ?? ''}
+                      tracks={recentTracks}
+                      isLoading={recentlyListenedLoading}
+                      error={recentlyListenedError}
+                      asCard={false}
+                    />
                   </aside>
                 </div>
               </section>

@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
 import { Headphones } from 'phosphor-react'
-import StarRating from './StarRating.jsx'
 import CoverImage from './CoverImage.jsx'
 
-function AlbumTile({ album, artist, cover, ratingValue }) {
+function AlbumTile({ album, artist, cover }) {
   return (
     <div className="group w-full snap-start space-y-3">
       <div className="overflow-hidden bg-white/85 shadow-subtle transition group-hover:-translate-y-1 group-hover:shadow-lg">
@@ -16,13 +15,6 @@ function AlbumTile({ album, artist, cover, ratingValue }) {
       <div className="space-y-1">
         <p className="mb-0 text-sm font-semibold text-text">{album}</p>
         <p className="mb-0 text-xs text-muted">{artist}</p>
-        <StarRating
-          value={ratingValue ?? 0}
-          readOnly
-          step={0.5}
-          size={16}
-          className="pt-1"
-        />
       </div>
     </div>
   )
@@ -58,7 +50,7 @@ export default function RecentlyListenedSection({ albums, isLoading, error, isSi
           <div className="scrollbar-sleek grid auto-cols-[160px] grid-flow-col gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2 md:auto-cols-[176px]">
             {visibleAlbums.map((album) => {
               const key = album.id ?? `${album.artist} - ${album.album}`
-              return <AlbumTile key={key} {...album} ratingValue={album.rating} />
+              return <AlbumTile key={key} {...album} />
             })}
           </div>
         )}

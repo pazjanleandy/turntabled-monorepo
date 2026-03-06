@@ -12,6 +12,18 @@ import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
 const LOG_STATUSES = new Set(['listened'])
 const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'backloggd'])
+const LASTFM_RECENT_LIMIT = 5
+
+function pickLastFmCoverArt(images = []) {
+  if (!Array.isArray(images)) return ''
+  const orderedSizes = ['mega', 'extralarge', 'large', 'medium', 'small']
+  for (const size of orderedSizes) {
+    const match = images.find((item) => item?.size === size && typeof item?.['#text'] === 'string')
+    const url = typeof match?.['#text'] === 'string' ? match['#text'].trim() : ''
+    if (url) return url
+  }
+  return ''
+}
 
 function formatRelativeTime(value) {
   if (!value) return 'just now'
@@ -167,6 +179,76 @@ export default function Home() {
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
         const authHeaders = await buildApiAuthHeaders()
+        let recentMapped = null
+        const recentResponse = await fetch(`${apiBase}/api/users/me/recently-listened`, {
+          headers: authHeaders,
+          signal: controller.signal,
+          cache: 'no-store',
+        })
+        const recentPayload = await recentResponse.json().catch(() => null)
+        const recentItems = Array.isArray(recentPayload) ? recentPayload : []
+        if (recentResponse.ok) {
+          recentMapped = recentItems.map((item, index) => ({
+            id:
+              `${item?.source ?? 'lastfm'}-${item?.played_at ?? item?.logged_at ?? ''}-${index}`,
+            artist: item?.artist ?? 'Unknown Artist',
+            album: item?.album ?? item?.track ?? 'Unknown Album',
+            cover: item?.cover_art || '/album/am.jpg',
+            rating: 0,
+            status: 'listened',
+            addedAt: item?.played_at ?? item?.logged_at ?? null,
+          }))
+        }
+
+        if ((!Array.isArray(recentMapped) || recentMapped.length === 0) && recentResponse.ok) {
+          const profileResponse = await fetch(`${apiBase}/api/profile`, {
+            headers: authHeaders,
+            signal: controller.signal,
+            cache: 'no-store',
+          })
+          const profilePayload = await profileResponse.json().catch(() => null)
+          const lastfmUsername = profilePayload?.user?.lastfmUsername
+          const lastfmApiKey = import.meta.env.VITE_LASTFM_API_KEY
+
+          if (
+            profileResponse.ok &&
+            typeof lastfmUsername === 'string' &&
+            lastfmUsername.trim() &&
+            typeof lastfmApiKey === 'string' &&
+            lastfmApiKey.trim()
+          ) {
+            const params = new URLSearchParams({
+              method: 'user.getRecentTracks',
+              user: lastfmUsername.trim(),
+              api_key: lastfmApiKey.trim(),
+              format: 'json',
+              limit: String(LASTFM_RECENT_LIMIT),
+            })
+            const lastfmResponse = await fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, {
+              signal: controller.signal,
+              cache: 'no-store',
+            })
+            const lastfmPayload = await lastfmResponse.json().catch(() => null)
+            const rawTracks = Array.isArray(lastfmPayload?.recenttracks?.track)
+              ? lastfmPayload.recenttracks.track
+              : []
+            if (lastfmResponse.ok && !lastfmPayload?.error) {
+              recentMapped = rawTracks.map((track, index) => ({
+                id: `lastfm-direct-${index}`,
+                artist: track?.artist?.['#text'] ?? 'Unknown Artist',
+                album: track?.album?.['#text'] || track?.name || 'Unknown Album',
+                cover: pickLastFmCoverArt(track?.image) || '/album/am.jpg',
+                rating: 0,
+                status: 'listened',
+                addedAt:
+                  typeof track?.date?.uts === 'string' && track.date.uts.trim()
+                    ? new Date(Number.parseInt(track.date.uts, 10) * 1000).toISOString()
+                    : null,
+              }))
+            }
+          }
+        }
+
         const limit = 50
         let page = 1
         let total = 0
@@ -225,7 +307,7 @@ export default function Home() {
         })
 
         if (!cancelled) {
-          setRecentlyListened(mapped)
+          setRecentlyListened(Array.isArray(recentMapped) ? recentMapped : [])
           setBacklogStats({
             listened: mapped.length,
             backlog: backlogCount,

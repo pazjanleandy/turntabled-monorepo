@@ -1,60 +1,59 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar.jsx";
 import BackButton from "../components/BackButton.jsx";
+import { buildApiAuthHeaders } from "../lib/apiAuth.js";
 
 export default function LastFmCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState("loading");
+  const token = searchParams.get("token");
   const [error, setError] = useState("");
+  const hasStartedRef = useRef(false);
 
   useEffect(() => {
-    const token = searchParams.get("token");
     if (!token) {
-      setStatus("error");
-      setError("Missing token from Last.fm.");
       return;
     }
+    if (hasStartedRef.current) {
+      return;
+    }
+    hasStartedRef.current = true;
 
     let cancelled = false;
-    async function exchangeToken() {
+    async function completeConnection() {
       try {
-        const response = await fetch("/api/lastfm/session", {
+        const apiBase = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL ?? "";
+        const authHeaders = await buildApiAuthHeaders();
+        const response = await fetch(`${apiBase}/api/lastfm/callback`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...authHeaders,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({ token }),
         });
 
         if (!response.ok) {
-          const message = await response.text();
-          throw new Error(message || "Failed to create Last.fm session.");
+          const payload = await response.json().catch(() => ({}));
+          const message = payload?.error?.message || payload?.error || "Unable to connect Last.fm.";
+          throw new Error(message);
         }
-
-        const data = await response.json();
-        if (!data?.sessionKey || !data?.username) {
-          throw new Error("Invalid session response.");
-        }
-
-        localStorage.setItem("lastfmSessionKey", data.sessionKey);
-        localStorage.setItem("lastfmUsername", data.username);
 
         if (!cancelled) {
-          setStatus("success");
-          navigate("/profile", { replace: true });
+          navigate("/profile?lastfm=connected", { replace: true });
         }
-      } catch (err) {
+      } catch (nextError) {
         if (cancelled) return;
-        setStatus("error");
-        setError(err?.message || "Unexpected error.");
+        setError(nextError?.message ?? "Unable to connect Last.fm.");
       }
     }
 
-    exchangeToken();
+    completeConnection();
     return () => {
       cancelled = true;
     };
-  }, [navigate, searchParams]);
+  }, [navigate, token]);
 
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
@@ -67,11 +66,12 @@ export default function LastFmCallbackPage() {
             Last.fm
           </p>
           <h1 className="mb-2 text-2xl text-text">Connecting your account</h1>
-          {status === "loading" ? (
+          {!token && (
+            <p className="mb-0 text-sm text-red-600">Missing token from Last.fm.</p>
+          )}
+          {error && token ? <p className="mb-0 text-sm text-red-600">{error}</p> : null}
+          {token && !error ? (
             <p className="mb-0 text-sm text-muted">Finishing authentication...</p>
-          ) : null}
-          {status === "error" ? (
-            <p className="mb-0 text-sm text-red-600">{error}</p>
           ) : null}
         </section>
       </div>

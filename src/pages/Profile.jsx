@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Radio } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
@@ -18,7 +18,6 @@ import {
   friends,
   profileUser,
 } from '../data/profileData.js'
-import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 import {
@@ -146,6 +145,49 @@ function mapBacklogReviews(items = []) {
     }))
 }
 
+function mapUnifiedRecentToCarousel(items = []) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    id: `${item?.source ?? 'recent'}-${item?.played_at ?? item?.logged_at ?? ''}-${index}`,
+    title: item?.album ?? item?.track ?? 'Unknown album',
+    artist: item?.artist ?? 'Unknown artist',
+    cover: item?.cover_art || '/album/am.jpg',
+    rating: 0,
+    status: 'listened',
+    addedAt: item?.played_at ?? item?.logged_at ?? null,
+  }))
+}
+
+const RECENT_CAROUSEL_PLACEHOLDERS = [
+  '/album/am.jpg',
+  '/album/blond.jpg',
+  '/album/currents.jpg',
+  '/album/igor.jpg',
+  '/album/ram.jpg',
+]
+
+function pickLastFmCoverArt(images = []) {
+  if (!Array.isArray(images)) return ''
+  const orderedSizes = ['mega', 'extralarge', 'large', 'medium', 'small']
+  for (const size of orderedSizes) {
+    const match = images.find((item) => item?.size === size && typeof item?.['#text'] === 'string')
+    const url = typeof match?.['#text'] === 'string' ? match['#text'].trim() : ''
+    if (url) return url
+  }
+  return ''
+}
+
+function mapRecentTracksToCarousel(tracks = []) {
+  return (Array.isArray(tracks) ? tracks : []).map((track, index) => ({
+    id: `lastfm-track-${index}`,
+    title: track?.album || track?.name || 'Unknown album',
+    artist: track?.artist || 'Unknown artist',
+    cover: track?.coverArt || RECENT_CAROUSEL_PLACEHOLDERS[index % RECENT_CAROUSEL_PLACEHOLDERS.length],
+    rating: 0,
+    status: 'listened',
+    addedAt: null,
+  }))
+}
+
 function mapApiProfileToViewModel(profilePayload, fallbackUser) {
   const apiUser = profilePayload?.user ?? {}
   const normalizedUsername =
@@ -200,14 +242,13 @@ export default function Profile() {
   const friendsList = friends
 
   const [isEditOpen, setIsEditOpen] = useState(false)
-  const [lastfmUsername, setLastfmUsername] = useState(
-    () => localStorage.getItem('lastfmUsername') ?? '',
-  )
+  const [lastfmUsername, setLastfmUsername] = useState('')
   const [recentTracks, setRecentTracks] = useState([])
   const [tracksStatus, setTracksStatus] = useState({
     loading: false,
     error: '',
   })
+  const [recentCarouselLoading, setRecentCarouselLoading] = useState(false)
   const [backlogPreview, setBacklogPreview] = useState([])
   const [backlogLoading, setBacklogLoading] = useState(false)
   const [editingReview, setEditingReview] = useState(null)
@@ -218,9 +259,10 @@ export default function Profile() {
   const [favoriteOrderError, setFavoriteOrderError] = useState('')
 
   const favoriteCovers = {}
-
-  const { ratings: recentRatings, updateRating: handleRecentRatingChange } =
-    useAlbumRatings(recentCarousel)
+  const recentCarouselForFavorites = useMemo(() => {
+    if (recentCarousel.length > 0) return recentCarousel
+    return mapRecentTracksToCarousel(recentTracks)
+  }, [recentCarousel, recentTracks])
 
   useEffect(() => {
     if (!isEditOpen && !isFavoritesManageOpen) return
@@ -234,7 +276,6 @@ export default function Profile() {
   useEffect(() => {
     if (!isSignedIn) {
       setBacklogPreview([])
-      setRecentCarousel([])
       setRecentActivityLogs([])
       setReviewList([])
       setProfileFavorites([])
@@ -250,6 +291,7 @@ export default function Profile() {
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
         const authHeaders = await buildApiAuthHeaders()
+
         const limit = 50
         let page = 1
         let total = 0
@@ -277,14 +319,6 @@ export default function Profile() {
           const bTime = Date.parse(b?.addedAt ?? b?.updatedAt ?? '') || 0
           return bTime - aTime
         })
-        const recentItems = sortedItems.map((item) => ({
-          title: item?.albumTitleRaw ?? 'Unknown album',
-          artist: item?.artistNameRaw ?? 'Unknown artist',
-          cover: item?.coverArtUrl || '/album/am.jpg',
-          rating: item?.rating ?? 0,
-          status: item?.status ?? 'backloggd',
-          addedAt: item?.addedAt ?? null,
-        }))
         const latestLogs = sortedItems
           .slice(0, 5)
           .map((item) => ({
@@ -300,7 +334,6 @@ export default function Profile() {
 
         if (!cancelled) {
           setBacklogPreview([])
-          setRecentCarousel(recentItems)
           setRecentActivityLogs(latestLogs)
           setReviewList(mapBacklogReviews(sortedItems))
           setProfileFavorites((current) => mapBacklogFavoritesToAlbums(sortedItems, current))
@@ -348,6 +381,49 @@ export default function Profile() {
       if (realtimeChannel) {
         supabase.removeChannel(realtimeChannel)
       }
+    }
+  }, [isSignedIn])
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setRecentCarousel([])
+      setRecentCarouselLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadRecentCarousel() {
+      setRecentCarouselLoading(true)
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const authHeaders = await buildApiAuthHeaders()
+        const recentResponse = await fetch(`${apiBase}/api/users/me/recently-listened`, {
+          headers: authHeaders,
+          cache: 'no-store',
+        })
+        const recentPayload = await recentResponse.json().catch(() => null)
+        if (!recentResponse.ok) {
+          throw new Error('Failed to load recently listened.')
+        }
+
+        if (!cancelled) {
+          setRecentCarousel(mapUnifiedRecentToCarousel(recentPayload))
+        }
+      } catch {
+        if (!cancelled) {
+          setRecentCarousel([])
+        }
+      } finally {
+        if (!cancelled) {
+          setRecentCarouselLoading(false)
+        }
+      }
+    }
+
+    loadRecentCarousel()
+    return () => {
+      cancelled = true
     }
   }, [isSignedIn])
 
@@ -401,10 +477,14 @@ export default function Profile() {
 
         if (!cancelled) {
           setProfileView(mapApiProfileToViewModel(payload, profileUser))
+          const apiLastfmUsername =
+            typeof payload?.user?.lastfmUsername === 'string' ? payload.user.lastfmUsername.trim() : ''
+          setLastfmUsername(apiLastfmUsername)
         }
       } catch {
         if (!cancelled) {
           setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
+          setLastfmUsername('')
         }
       } finally {
         if (!cancelled) {
@@ -426,6 +506,9 @@ export default function Profile() {
         },
       }
       setProfileView(mapApiProfileToViewModel(payload, profileUser))
+      const nextLastfmUsername =
+        typeof profile?.lastfmUsername === 'string' ? profile.lastfmUsername.trim() : ''
+      setLastfmUsername(nextLastfmUsername)
     }
 
     window.addEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
@@ -478,6 +561,7 @@ export default function Profile() {
           artist: track?.artist?.['#text'] ?? 'Unknown artist',
           album: track?.album?.['#text'] ?? '',
           nowPlaying: track?.['@attr']?.nowplaying === 'true',
+          coverArt: pickLastFmCoverArt(track?.image),
         }))
 
         if (!cancelled) {
@@ -697,10 +781,8 @@ export default function Profile() {
                       favorites={favorites}
                       isLoadingFavorites={favoritesLoading}
                       favoriteCovers={favoriteCovers}
-                      recentCarousel={recentCarousel}
-                      isLoadingRecent={backlogLoading}
-                      recentRatings={recentRatings}
-                      onRecentRatingChange={handleRecentRatingChange}
+                      recentCarousel={recentCarouselForFavorites}
+                      isLoadingRecent={recentCarouselLoading}
                       onManageFavorites={openFavoritesManageModal}
                       manageDisabled={favoritesLoading}
                     />

@@ -9,6 +9,18 @@ function requireEnv(name) {
   return value.trim();
 }
 
+function requireAnyEnv(names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new InfrastructureError(
+    `Missing required environment variable. Provide one of: ${names.join(", ")}`
+  );
+}
+
 export function getExploreEnv() {
   return {
     NODE_ENV: process.env.NODE_ENV ?? "development",
@@ -39,5 +51,16 @@ export function getProfileEnv() {
     NODE_ENV: process.env.NODE_ENV ?? "development",
     SUPABASE_URL: requireEnv("SUPABASE_URL"),
     SUPABASE_SERVICE_ROLE_KEY: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+}
+
+export function getLastFmEnv() {
+  return {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    SUPABASE_URL: requireEnv("SUPABASE_URL"),
+    SUPABASE_SERVICE_ROLE_KEY: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    LASTFM_API_KEY: requireEnv("LASTFM_API_KEY"),
+    LASTFM_API_SECRET: requireAnyEnv(["LASTFM_API_SECRET", "LASTFM_SHARED_SECRET"]),
+    LASTFM_CALLBACK_URL: requireEnv("LASTFM_CALLBACK_URL"),
   };
 }

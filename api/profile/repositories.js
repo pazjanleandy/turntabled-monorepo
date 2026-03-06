@@ -17,7 +17,7 @@ export class ProfileRepository {
   async findPublicUserById(userId) {
     const { data, error } = await this.supabase
       .from("users")
-      .select("id,username,bio,avatar_url")
+      .select("id,username,bio,avatar_url,lastfm_username")
       .eq("id", userId)
       .maybeSingle();
 
@@ -28,7 +28,7 @@ export class ProfileRepository {
   async findPublicUserByUsername(username) {
     const { data, error } = await this.supabase
       .from("users")
-      .select("id,username,bio,avatar_url")
+      .select("id,username,bio,avatar_url,lastfm_username")
       .eq("username", username)
       .maybeSingle();
 
@@ -79,7 +79,7 @@ export class ProfileRepository {
   async findUserById(userId) {
     const { data, error } = await this.supabase
       .from("users")
-      .select("id,username,email,full_name,bio,avatar_url")
+      .select("id,username,email,full_name,bio,avatar_url,lastfm_username,lastfm_connected_at")
       .eq("id", userId)
       .maybeSingle();
 
