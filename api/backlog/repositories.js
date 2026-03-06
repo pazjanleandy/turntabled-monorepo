@@ -113,6 +113,7 @@ export class BacklogRepository {
       ...(Object.prototype.hasOwnProperty.call(patch, "reviewed_at")
         ? { reviewed_at: patch.reviewed_at }
         : {}),
+      ...(Object.prototype.hasOwnProperty.call(patch, "added_at") ? { added_at: patch.added_at } : {}),
       updated_at: new Date().toISOString(),
     };
 

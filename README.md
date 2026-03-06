@@ -2,6 +2,8 @@
 
 Turntabled is a React + Vite + Tailwind app for album logging, artist discovery, profile management, and social connections.
 
+Last updated: March 6, 2026.
+
 ## Stack
 
 - React 19
@@ -161,6 +163,19 @@ Why two terminals:
 Use `.env.example` as the template.
 
 ## Recent Changes We Made
+
+### Mar 6, 2026
+
+- Album log UX improvements:
+  - log modal now pre-fills existing status/rating/review/date when reopening
+  - editing an existing log now persists updates to status/rating/date/review
+  - rating in `Log album` now supports half-star increments (0.5 steps)
+- Favorites toggle update:
+  - clicking `Favorited` on album page now removes the album from favorites
+  - favorite button now acts as add/remove toggle with matching notices
+- Explore pagination:
+  - added page-based pagination with 48 albums per page
+  - page state now reads/writes via query param (`?page=`) with next/previous controls
 
 ### Mar 5, 2026
 

@@ -34,10 +34,14 @@ function assertUuidLike(value, fieldName) {
 }
 
 function assertRating(value, fieldName = "rating") {
-  if (!Number.isInteger(value) || value < 1 || value > 5) {
-    throw new ValidationError(`Field '${fieldName}' must be an integer between 1 and 5.`);
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 5) {
+    throw new ValidationError(`Field '${fieldName}' must be a number between 1 and 5.`);
   }
-  return value;
+  const snapped = Math.round(value * 2) / 2;
+  if (Math.abs(value - snapped) > 0.001) {
+    throw new ValidationError(`Field '${fieldName}' must be in 0.5 increments between 1 and 5.`);
+  }
+  return snapped;
 }
 
 function assertStatus(value) {
@@ -138,11 +142,14 @@ export class BacklogService {
 
     const duplicate = await this.backlogRepository.findDuplicateByUser(userId, albumId);
     if (duplicate?.id) {
-      if (!reviewText && !isFavorite) {
-        throw new ValidationError("This album is already in your backlog.");
-      }
+      const patch = {
+        status: isFavorite ? "listened" : normalizedStatus,
+        rating,
+      };
 
-      const patch = {};
+      if (addedAt) {
+        patch.added_at = addedAt;
+      }
 
       if (reviewText) {
         patch.review_text = reviewText;
@@ -178,9 +185,20 @@ export class BacklogService {
     const patch = {};
     const hasReviewText = Object.prototype.hasOwnProperty.call(input ?? {}, "reviewText");
     const hasClearReview = Object.prototype.hasOwnProperty.call(input ?? {}, "clearReview");
+    const hasListenedOn = Object.prototype.hasOwnProperty.call(input ?? {}, "listenedOn");
 
     if (Object.prototype.hasOwnProperty.call(input ?? {}, "rating")) {
       patch.rating = assertRating(input?.rating, "rating");
+    }
+    if (Object.prototype.hasOwnProperty.call(input ?? {}, "status")) {
+      patch.status = assertStatus(input?.status);
+    }
+    if (hasListenedOn) {
+      const addedAt = parseListenedOnDate(input?.listenedOn);
+      if (!addedAt) {
+        throw new ValidationError("Field 'listenedOn' must be in YYYY-MM-DD format.");
+      }
+      patch.added_at = addedAt;
     }
     if (hasReviewText && hasClearReview) {
       throw new ValidationError("Provide only one of: reviewText, clearReview.");
@@ -202,7 +220,9 @@ export class BacklogService {
     }
 
     if (Object.keys(patch).length === 0) {
-      throw new ValidationError("Provide at least one editable field: rating, reviewText, clearReview.");
+      throw new ValidationError(
+        "Provide at least one editable field: status, rating, listenedOn, reviewText, clearReview."
+      );
     }
 
     const current = await this.backlogRepository.findById(backlogId);

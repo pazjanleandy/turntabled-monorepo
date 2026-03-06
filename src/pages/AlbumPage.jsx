@@ -44,12 +44,12 @@ function LogCard({
                 : "border-black/5 bg-white/90 text-text hover:bg-white disabled:opacity-50"
             }`}
             onClick={onFavorite}
-            disabled={disabled || favoriteBusy || isFavorited}
+            disabled={disabled || favoriteBusy}
             title={
               disabled
                 ? "Login required"
                 : isFavorited
-                  ? "Already in favorites"
+                  ? "Remove from favorites"
                   : "Add to favorites"
             }
           >
@@ -281,15 +281,15 @@ export default function AlbumPage() {
 
   const handleFavoriteClick = async () => {
     if (!isSignedIn || !safeAlbum?.id || isFavoriteSaving) return;
-    if (backlogItem?.isFavorite) return;
 
     setIsFavoriteSaving(true);
     try {
       const apiBase = import.meta.env.DEV ? "" : import.meta.env.VITE_API_BASE_URL ?? "";
       const authHeaders = await buildApiAuthHeaders();
+      const nextIsFavorite = !backlogItem?.isFavorite;
       let item = backlogItem;
 
-      if (!item?.id) {
+      if (!item?.id && nextIsFavorite) {
         const createResponse = await fetch(`${apiBase}/api/backlog`, {
           method: "POST",
           headers: {
@@ -312,7 +312,7 @@ export default function AlbumPage() {
         item = createPayload?.item ?? null;
       }
 
-      if (item?.id && !item?.isFavorite) {
+      if (item?.id && item?.isFavorite !== nextIsFavorite) {
         const favoriteResponse = await fetch(
           `${apiBase}/api/profile/favorites?id=${encodeURIComponent(item.id)}`,
           {
@@ -321,12 +321,17 @@ export default function AlbumPage() {
               "Content-Type": "application/json",
               ...authHeaders,
             },
-            body: JSON.stringify({ isFavorite: true }),
+            body: JSON.stringify({ isFavorite: nextIsFavorite }),
           },
         );
         const favoritePayload = await favoriteResponse.json().catch(() => null);
         if (!favoriteResponse.ok) {
-          throw new Error(favoritePayload?.error?.message ?? "Failed to add album to favorites.");
+          throw new Error(
+            favoritePayload?.error?.message ??
+              (nextIsFavorite
+                ? "Failed to add album to favorites."
+                : "Failed to remove album from favorites."),
+          );
         }
       }
 
@@ -334,14 +339,19 @@ export default function AlbumPage() {
         item
           ? {
               ...item,
-              isFavorite: true,
+              isFavorite: nextIsFavorite,
               status: item.status || "listened",
             }
           : null,
-        "Added to favorites",
+        nextIsFavorite ? "Added to favorites" : "Removed from favorites",
       );
     } catch (error) {
-      setLogNotice(error?.message ?? "Unable to add album to favorites.");
+      setLogNotice(
+        error?.message ??
+          (backlogItem?.isFavorite
+            ? "Unable to remove album from favorites."
+            : "Unable to add album to favorites."),
+      );
       window.setTimeout(() => setLogNotice(""), 2400);
     } finally {
       setIsFavoriteSaving(false);
@@ -553,11 +563,16 @@ export default function AlbumPage() {
         isOpen={isLogDatesOpen}
         onClose={() => setIsLogDatesOpen(false)}
         albumId={safeAlbum?.id}
+        backlogId={backlogItem?.id ?? ""}
         albumTitle={safeAlbum?.title}
         albumArtist={safeAlbum?.artist}
         albumArt={safeAlbum?.cover}
+        initialStatus={backlogItem?.status ?? "backloggd"}
+        initialRating={backlogItem?.rating ?? 0}
+        initialReviewText={backlogItem?.reviewText ?? ""}
+        initialListenedOn={backlogItem?.addedAt ?? ""}
         onSaved={(item) => {
-          handleBacklogSaved(item, "Review saved", { refreshAlbum: true })
+          handleBacklogSaved(item, "Log saved", { refreshAlbum: true })
         }}
       />
       <ReviewModal

@@ -15,12 +15,19 @@ const FILTER_OPTIONS = [
   { value: 'popular-year', label: 'Popular year' },
   { value: 'popular-week', label: 'Popular week' },
 ]
+const PAGE_SIZE = 48
 
 function parseYearCandidate(value) {
   if (value == null || value === '') return 0
   if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
   const match = String(value).match(/\d{4}/)
   return match ? Number.parseInt(match[0], 10) : 0
+}
+
+function parsePositiveInt(value, fallback = 1) {
+  const parsed = Number.parseInt(value ?? '', 10)
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback
+  return parsed
 }
 
 export default function Explore() {
@@ -30,11 +37,31 @@ export default function Explore() {
   const [decadeFilter, setDecadeFilter] = useState('all')
   const [genreFilter, setGenreFilter] = useState('all')
   const [apiAlbums, setApiAlbums] = useState([])
+  const [totalAlbums, setTotalAlbums] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const lastFetchAtRef = useRef(0)
   const fallbackFilter = FILTER_OPTIONS[0]?.value ?? 'a-z'
   const activeFilter = searchParams.get('filter') ?? fallbackFilter
+  const activePage = parsePositiveInt(searchParams.get('page'), 1)
+  const totalPages = useMemo(() => {
+    if (totalAlbums < 1) return 1
+    return Math.max(1, Math.ceil(totalAlbums / PAGE_SIZE))
+  }, [totalAlbums])
+
+  const handlePageChange = (nextPage) => {
+    const safePage = Math.min(Math.max(nextPage, 1), totalPages)
+    if (safePage === activePage) return
+
+    const nextParams = new URLSearchParams(searchParams)
+    if (safePage === 1) {
+      nextParams.delete('page')
+    } else {
+      nextParams.set('page', String(safePage))
+    }
+    setSearchParams(nextParams)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -67,7 +94,7 @@ export default function Explore() {
           })
         }
 
-        const response = await fetch(`${apiBase}/api/explore?page=1&limit=50`, {
+        const response = await fetch(`${apiBase}/api/explore?page=${activePage}&limit=${PAGE_SIZE}`, {
           headers,
           signal: controller.signal,
         })
@@ -79,6 +106,8 @@ export default function Explore() {
 
         const payload = await response.json()
         const items = Array.isArray(payload?.items) ? payload.items : []
+        const total = Number(payload?.total)
+        const safeTotal = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
 
         const mapped = items.map((item) => {
           const title = item?.albumTitle ?? 'Unknown Album'
@@ -115,6 +144,7 @@ export default function Explore() {
 
         if (!cancelled) {
           setApiAlbums(mapped)
+          setTotalAlbums(safeTotal)
         }
 
       } catch (error) {
@@ -122,6 +152,7 @@ export default function Explore() {
         if (!cancelled) {
           setLoadError(error?.message ?? 'Unable to load albums.')
           setApiAlbums([])
+          setTotalAlbums(0)
         }
       } finally {
         if (!cancelled) {
@@ -141,7 +172,18 @@ export default function Explore() {
         clearTimeout(debounceTimer)
       }
     }
-  }, [isSignedIn])
+  }, [isSignedIn, activePage])
+
+  useEffect(() => {
+    if (totalAlbums < 1 || activePage <= totalPages) return
+    const nextParams = new URLSearchParams(searchParams)
+    if (totalPages === 1) {
+      nextParams.delete('page')
+    } else {
+      nextParams.set('page', String(totalPages))
+    }
+    setSearchParams(nextParams, { replace: true })
+  }, [activePage, totalAlbums, totalPages, searchParams, setSearchParams])
 
   const albums = useMemo(() => apiAlbums, [apiAlbums])
 
@@ -305,6 +347,9 @@ export default function Explore() {
               <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
                 {visibleAlbums.length} album{visibleAlbums.length === 1 ? '' : 's'}
               </span>
+              <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                Page {activePage} of {totalPages}
+              </span>
             </div>
           </div>
 
@@ -321,14 +366,40 @@ export default function Explore() {
               No albums matched your search.
             </div>
           ) : (
-            <div
-              className="grid gap-3 sm:gap-4"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
-            >
-              {visibleAlbums.map((album) => (
-                <ExploreAlbumTile key={album.id} album={album} />
-              ))}
-            </div>
+            <>
+              <div
+                className="grid gap-3 sm:gap-4"
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+              >
+                {visibleAlbums.map((album) => (
+                  <ExploreAlbumTile key={album.id} album={album} />
+                ))}
+              </div>
+
+              {totalPages > 1 ? (
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-black/10 pt-3">
+                  <button
+                    type="button"
+                    className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-text transition hover:border-black/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => handlePageChange(activePage - 1)}
+                    disabled={isLoading || activePage <= 1}
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                    {activePage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-text transition hover:border-black/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => handlePageChange(activePage + 1)}
+                    disabled={isLoading || activePage >= totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              ) : null}
+            </>
           )}
         </section>
       </div>

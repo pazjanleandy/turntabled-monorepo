@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Calendar, CaretDown, Star, X } from 'phosphor-react'
+import { Calendar, CaretDown, X } from 'phosphor-react'
 import { buildApiAuthHeaders } from '../../lib/apiAuth.js'
 import CoverImage from '../CoverImage.jsx'
+import StarRating from '../StarRating.jsx'
 
 const statusOptions = [
   { value: 'listened', label: 'Listened', dotClass: 'bg-emerald-400' },
@@ -9,31 +10,77 @@ const statusOptions = [
   { value: 'unfinished', label: 'Unfinished', dotClass: 'bg-amber-500' },
   { value: 'backloggd', label: 'Backloggd', dotClass: 'bg-slate-400' },
 ]
+const validStatusValues = new Set(statusOptions.map((status) => status.value))
+
+function getTodayDateInputValue() {
+  return new Date().toISOString().split('T')[0]
+}
+
+function normalizeStatus(value) {
+  if (typeof value !== 'string') return 'backloggd'
+  const normalized = value.trim().toLowerCase()
+  return validStatusValues.has(normalized) ? normalized : 'backloggd'
+}
+
+function normalizeRating(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 1 || numeric > 5) return 0
+  const snapped = Math.round(numeric * 2) / 2
+  if (Math.abs(numeric - snapped) > 0.001) return 0
+  return snapped
+}
+
+function normalizeReviewText(value) {
+  return typeof value === 'string' ? value : ''
+}
+
+function normalizeListenedOn(value, fallbackDate) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim()
+  }
+
+  const parsed = new Date(value ?? '')
+  if (Number.isNaN(parsed.getTime())) return fallbackDate
+  return parsed.toISOString().split('T')[0]
+}
 
 export default function LogDatesModal({
   isOpen,
   onClose,
   albumId = '',
+  backlogId = '',
   albumTitle = '',
   albumArtist = '',
   albumArt = '',
+  initialStatus = 'backloggd',
+  initialRating = 0,
+  initialReviewText = '',
+  initialListenedOn = '',
   onSaved = null,
 }) {
+  const today = useMemo(() => getTodayDateInputValue(), [])
+  const initialStatusValue = useMemo(() => normalizeStatus(initialStatus), [initialStatus])
+  const initialRatingValue = useMemo(() => normalizeRating(initialRating), [initialRating])
+  const initialReviewValue = useMemo(() => normalizeReviewText(initialReviewText), [initialReviewText])
+  const initialListenedOnValue = useMemo(
+    () => normalizeListenedOn(initialListenedOn, today),
+    [initialListenedOn, today]
+  )
+  const normalizedBacklogId = useMemo(
+    () => (typeof backlogId === 'string' ? backlogId.trim() : ''),
+    [backlogId]
+  )
   const [isStatusOpen, setIsStatusOpen] = useState(false)
-  const [selectedStatus, setSelectedStatus] = useState('backloggd')
-  const [selectedRating, setSelectedRating] = useState(0)
-  const [hoverRating, setHoverRating] = useState(0)
-  const [reviewText, setReviewText] = useState('')
-  const [listenedOn, setListenedOn] = useState(() => new Date().toISOString().split('T')[0])
+  const [selectedStatus, setSelectedStatus] = useState(initialStatusValue)
+  const [selectedRating, setSelectedRating] = useState(initialRatingValue)
+  const [reviewText, setReviewText] = useState(initialReviewValue)
+  const [listenedOn, setListenedOn] = useState(initialListenedOnValue)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const today = new Date().toISOString().split('T')[0]
   const selectedStatusOption = useMemo(
     () => statusOptions.find((status) => status.value === selectedStatus) ?? statusOptions[3],
     [selectedStatus]
   )
-  const activeRating = hoverRating || selectedRating
-
   useEffect(() => {
     if (!isOpen) return undefined
     const originalOverflow = document.body.style.overflow
@@ -46,18 +93,21 @@ export default function LogDatesModal({
   useEffect(() => {
     if (!isOpen) return
     setIsStatusOpen(false)
-    setSelectedStatus('backloggd')
-    setSelectedRating(0)
-    setHoverRating(0)
-    setReviewText('')
-    setListenedOn(today)
+    setSelectedStatus(initialStatusValue)
+    setSelectedRating(initialRatingValue)
+    setReviewText(initialReviewValue)
+    setListenedOn(initialListenedOnValue)
     setSaveError('')
-  }, [isOpen, today])
+  }, [isOpen, initialStatusValue, initialRatingValue, initialReviewValue, initialListenedOnValue])
 
   const handleSave = async () => {
     if (!albumId || isSaving) return
-    if (selectedRating < 1 || selectedRating > 5) {
-      setSaveError('Please select a rating from 1 to 5 stars.')
+    if (
+      selectedRating < 1 ||
+      selectedRating > 5 ||
+      Math.abs(selectedRating * 2 - Math.round(selectedRating * 2)) > 0.001
+    ) {
+      setSaveError('Please select a rating from 1 to 5 stars in 0.5 increments.')
       return
     }
 
@@ -69,30 +119,44 @@ export default function LogDatesModal({
     try {
       const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
       const authHeaders = await buildApiAuthHeaders()
-      const response = await fetch(`${apiBase}/api/backlog`, {
-        method: 'POST',
+      const isEditingExisting = Boolean(normalizedBacklogId)
+      const endpoint = isEditingExisting
+        ? `${apiBase}/api/backlog?id=${encodeURIComponent(normalizedBacklogId)}`
+        : `${apiBase}/api/backlog`
+      const requestPayload = {
+        albumId,
+        artistNameRaw: albumArtist,
+        albumTitleRaw: albumTitle,
+        status: selectedStatus,
+        rating: selectedRating,
+        listenedOn,
+      }
+      const response = await fetch(endpoint, {
+        method: isEditingExisting ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...authHeaders,
         },
-        body: JSON.stringify({
-          albumId,
-          artistNameRaw: albumArtist,
-          albumTitleRaw: albumTitle,
-          status: selectedStatus,
-          rating: selectedRating,
-          listenedOn,
-          ...(trimmedReview ? { reviewText: trimmedReview } : {}),
-        }),
+        body: JSON.stringify(
+          isEditingExisting
+            ? {
+                ...requestPayload,
+                ...(trimmedReview ? { reviewText: trimmedReview } : { clearReview: true }),
+              }
+            : {
+                ...requestPayload,
+                ...(trimmedReview ? { reviewText: trimmedReview } : {}),
+              }
+        ),
       })
 
-      const payload = await response.json().catch(() => null)
+      const responsePayload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.error?.message ?? 'Failed to save album log.')
+        throw new Error(responsePayload?.error?.message ?? 'Failed to save album log.')
       }
 
       if (typeof onSaved === 'function') {
-        onSaved(payload?.item ?? null)
+        onSaved(responsePayload?.item ?? null)
       }
       onClose()
     } catch (error) {
@@ -195,25 +259,19 @@ export default function LogDatesModal({
             <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
               Rating
             </legend>
-            <div className="flex justify-start gap-1" onMouseLeave={() => setHoverRating(0)}>
-              {[1, 2, 3, 4, 5].map((rating) => (
-                <button
-                  key={rating}
-                  type="button"
-                  className="rounded-none border-0 bg-transparent px-0 py-0 text-slate-400 shadow-none transition hover:bg-transparent hover:text-amber-500 hover:translate-y-0"
-                  aria-label={`Rate ${rating} stars`}
-                  onMouseEnter={() => setHoverRating(rating)}
-                  onFocus={() => setHoverRating(rating)}
-                  onBlur={() => setHoverRating(0)}
-                  onClick={() => setSelectedRating(rating)}
-                >
-                  {rating <= activeRating ? (
-                    <Star size={22} weight="fill" className="text-amber-500" />
-                  ) : (
-                    <Star size={22} weight="regular" />
-                  )}
-                </button>
-              ))}
+            <div className="space-y-1.5">
+              <StarRating
+                value={selectedRating}
+                onChange={setSelectedRating}
+                step={0.5}
+                size={22}
+                ariaLabel="Album rating"
+              />
+              {selectedRating ? (
+                <p className="mb-0 text-xs font-semibold text-slate-600">{selectedRating.toFixed(1)}/5</p>
+              ) : (
+                <p className="mb-0 text-xs text-slate-500">Select a rating</p>
+              )}
             </div>
           </fieldset>
 
