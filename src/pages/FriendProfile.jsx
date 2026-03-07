@@ -7,12 +7,22 @@ import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
+import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
+import { ChatCircle, Headphones, Heart } from 'phosphor-react'
 import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
+import useFriendActivity from '../hooks/useFriendActivity.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+import {
+  acceptFriendRequest,
+  deleteFriendship,
+  fetchRelationshipWithUser,
+  rejectFriendRequest,
+  sendFriendRequest,
+} from '../lib/friendsClient.js'
 
 function isUuidLike(value = '') {
   const normalized = String(value).trim()
@@ -184,6 +194,12 @@ function mapReviews(items = []) {
 
 export default function FriendProfile() {
   const { isSignedIn } = useAuthStatus()
+  const {
+    activities: friendActivities,
+    isLoading: isFriendActivityLoading,
+    error: friendActivityError,
+    hasFriends,
+  } = useFriendActivity({ isSignedIn, limit: 18 })
   const { friendSlug } = useParams()
   const targetIdentifier = friendSlug ?? ''
 
@@ -193,6 +209,10 @@ export default function FriendProfile() {
   const [recentlyListened, setRecentlyListened] = useState([])
   const [recentlyListenedLoading, setRecentlyListenedLoading] = useState(false)
   const [recentlyListenedError, setRecentlyListenedError] = useState('')
+  const [relationship, setRelationship] = useState({ status: 'none', request: null })
+  const [relationshipLoading, setRelationshipLoading] = useState(false)
+  const [relationshipError, setRelationshipError] = useState('')
+  const [relationshipActionLoading, setRelationshipActionLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -309,6 +329,63 @@ export default function FriendProfile() {
     }
   }, [isSignedIn, targetIdentifier])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRelationship() {
+      const targetUserId = payload?.user?.id
+      if (!isSignedIn || !targetUserId) {
+        setRelationship({ status: 'none', request: null })
+        setRelationshipError('')
+        setRelationshipLoading(false)
+        return
+      }
+
+      setRelationshipLoading(true)
+      setRelationshipError('')
+      try {
+        const next = await fetchRelationshipWithUser(targetUserId)
+        if (!cancelled) {
+          setRelationship(next)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setRelationship({ status: 'none', request: null })
+          setRelationshipError(loadError?.message ?? 'Failed to load friend relationship.')
+        }
+      } finally {
+        if (!cancelled) {
+          setRelationshipLoading(false)
+        }
+      }
+    }
+
+    loadRelationship()
+    return () => {
+      cancelled = true
+    }
+  }, [isSignedIn, payload?.user?.id])
+
+  const refreshRelationship = async () => {
+    const targetUserId = payload?.user?.id
+    if (!targetUserId) return
+    const next = await fetchRelationshipWithUser(targetUserId)
+    setRelationship(next)
+  }
+
+  const runRelationshipAction = async (task) => {
+    setRelationshipError('')
+    setRelationshipActionLoading(true)
+    try {
+      await task()
+      await refreshRelationship()
+    } catch (actionError) {
+      setRelationshipError(actionError?.message ?? 'Friend action failed.')
+    } finally {
+      setRelationshipActionLoading(false)
+    }
+  }
+
   const favorites = useMemo(
     () => mapFavoriteAlbums(Array.isArray(payload?.favorites) ? payload.favorites : []),
     [payload],
@@ -362,6 +439,41 @@ export default function FriendProfile() {
         rating: item?.rating ?? 0,
       })),
     [publicActivity, targetIdentifier],
+  )
+  const friendActivityRows = useMemo(
+    () =>
+      friendActivities.map((item) => {
+        const username = item?.user?.username || 'Unknown user'
+        if (item.type === 'review') {
+          return {
+            id: item.id,
+            icon: <ChatCircle size={16} weight="bold" />,
+            text: `${username} reviewed ${item.albumTitle}`,
+            meta: `${item.artistName} - ${formatRelativeTime(item.reviewedAt || item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
+          }
+        }
+        if (item.type === 'favorite') {
+          return {
+            id: item.id,
+            icon: <Heart size={16} weight="bold" />,
+            text: `${username} marked ${item.albumTitle} as favorite`,
+            meta: `${item.artistName} - ${formatRelativeTime(item.updatedAt || item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
+          }
+        }
+        return {
+          id: item.id,
+          icon: <Headphones size={16} weight="bold" />,
+          text:
+            typeof item.rating === 'number'
+              ? `${username} rated ${item.albumTitle} ${item.rating}/5`
+              : `${username} logged ${item.albumTitle}`,
+          meta: `${item.artistName} - ${formatRelativeTime(item.addedAt)}`,
+          cover: item.coverArtUrl || '/album/am.jpg',
+        }
+      }),
+    [friendActivities],
   )
 
   if (isLoading) {
@@ -419,6 +531,72 @@ export default function FriendProfile() {
                   avatarSrc={payload?.user?.avatarUrl || '/profile/rainy.jpg'}
                   bannerSrc={payload?.user?.coverUrl || '/hero/hero1.jpg'}
                 />
+              </section>
+
+              <section className="px-6 py-5 sm:px-8">
+                <div className="rounded-2xl border border-black/8 bg-white/70 p-4">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                    Friendship
+                  </p>
+                  {relationshipLoading ? (
+                    <p className="mb-0 text-sm text-slate-600">Checking friend status...</p>
+                  ) : relationship.status === 'friends' ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg border border-emerald-400/35 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                        Friends
+                      </span>
+                      <button
+                        type="button"
+                        disabled={relationshipActionLoading}
+                        onClick={() =>
+                          runRelationshipAction(() => deleteFriendship(payload?.user?.id))
+                        }
+                        className="rounded-lg border border-black/15 bg-white px-3 py-2 text-xs font-semibold text-black/70 transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Remove Friend
+                      </button>
+                    </div>
+                  ) : relationship.status === 'outgoing_pending' ? (
+                    <span className="rounded-lg border border-black/15 bg-white px-3 py-2 text-xs font-semibold text-black/60">
+                      Request Sent
+                    </span>
+                  ) : relationship.status === 'incoming_pending' ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={relationshipActionLoading}
+                        onClick={() =>
+                          runRelationshipAction(() => acceptFriendRequest(relationship.request?.id))
+                        }
+                        className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        disabled={relationshipActionLoading}
+                        onClick={() =>
+                          runRelationshipAction(() => rejectFriendRequest(relationship.request?.id))
+                        }
+                        className="rounded-lg border border-red-500/25 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={relationshipActionLoading || !isSignedIn}
+                      onClick={() => runRelationshipAction(() => sendFriendRequest(payload?.user?.id))}
+                      className="rounded-lg border border-orange-500/35 bg-accent px-3 py-2 text-xs font-semibold text-[#1f130c] transition hover:bg-[#ef6b2f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Add Friend
+                    </button>
+                  )}
+                  {relationshipError ? (
+                    <p className="mb-0 mt-2 text-sm text-red-700">{relationshipError}</p>
+                  ) : null}
+                </div>
               </section>
 
               <section className="px-6 py-6 sm:px-8">
@@ -489,6 +667,19 @@ export default function FriendProfile() {
                     />
                   </aside>
                 </div>
+              </section>
+
+              <section className="px-6 py-6 sm:px-8">
+                <RecentActivitySection
+                  activity={friendActivityRows}
+                  isLoading={isFriendActivityLoading}
+                  error={friendActivityError}
+                  emptyMessage={
+                    hasFriends
+                      ? 'No friend activity yet.'
+                      : 'No friend activity yet. Add friends to see their music activity.'
+                  }
+                />
               </section>
 
               <section className="px-6 py-6 sm:px-8">

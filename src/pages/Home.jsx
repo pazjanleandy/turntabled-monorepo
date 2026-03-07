@@ -6,8 +6,9 @@ import StatsPanel from '../components/StatsPanel.jsx'
 import RecentlyListenedSection from '../components/RecentlyListenedSection.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import Footer from '../components/Footer.jsx'
-import { ChatCircle, Headphones, Heart, PlusCircle, UserPlus } from 'phosphor-react'
+import { ChatCircle, Headphones, Heart, PlusCircle } from 'phosphor-react'
 import useAuthStatus from '../hooks/useAuthStatus.js'
+import useFriendActivity from '../hooks/useFriendActivity.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
 const LOG_STATUSES = new Set(['listened'])
@@ -65,45 +66,14 @@ function formatRelativeTime(value) {
   return `${n} year${n === 1 ? '' : 's'} ago`
 }
 
-const recentActivity = [
-  {
-    id: 'friend-1',
-    icon: <Headphones size={16} weight="bold" />,
-    text: 'Ari listened to In Rainbows',
-    meta: 'Radiohead - 45 min ago',
-    cover: '/album/currents.jpg',
-  },
-  {
-    id: 'friend-2',
-    icon: <Heart size={16} weight="bold" />,
-    text: 'Maya liked your review',
-    meta: 'Phoebe Bridgers - 1h ago',
-    cover: '/album/igor.jpg',
-  },
-  {
-    id: 'friend-3',
-    icon: <ChatCircle size={16} weight="bold" />,
-    text: 'Nico commented on your log',
-    meta: 'Frank Ocean - 3h ago',
-    cover: '/album/blond.jpg',
-  },
-  {
-    id: 'friend-4',
-    icon: <PlusCircle size={16} weight="bold" />,
-    text: 'June added Renaissance to backlog',
-    meta: 'Beyonce - Yesterday',
-    cover: '/album/ram.jpg',
-  },
-  {
-    id: 'friend-5',
-    icon: <UserPlus size={16} weight="bold" />,
-    text: 'Sam followed you',
-    meta: 'Indie + Jazz playlists',
-  },
-]
-
 export default function Home() {
   const { isSignedIn } = useAuthStatus()
+  const {
+    activities: friendActivities,
+    isLoading: isFriendActivityLoading,
+    error: friendActivityError,
+    hasFriends,
+  } = useFriendActivity({ isSignedIn, limit: 24 })
   const [search, setSearch] = useState('')
   const [popularAlbums, setPopularAlbums] = useState([])
   const [isPopularLoading, setIsPopularLoading] = useState(false)
@@ -356,6 +326,41 @@ export default function Home() {
     ],
     [backlogStats],
   )
+  const friendActivityRows = useMemo(
+    () =>
+      friendActivities.map((item) => {
+        const username = item?.user?.username || 'Unknown user'
+        if (item.type === 'review') {
+          return {
+            id: item.id,
+            icon: <ChatCircle size={16} weight="bold" />,
+            text: `${username} reviewed ${item.albumTitle}`,
+            meta: `${item.artistName} - ${formatRelativeTime(item.reviewedAt || item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
+          }
+        }
+        if (item.type === 'favorite') {
+          return {
+            id: item.id,
+            icon: <Heart size={16} weight="bold" />,
+            text: `${username} marked ${item.albumTitle} as favorite`,
+            meta: `${item.artistName} - ${formatRelativeTime(item.updatedAt || item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
+          }
+        }
+        return {
+          id: item.id,
+          icon: <Headphones size={16} weight="bold" />,
+          text:
+            typeof item.rating === 'number'
+              ? `${username} rated ${item.albumTitle} ${item.rating}/5`
+              : `${username} logged ${item.albumTitle}`,
+          meta: `${item.artistName} - ${formatRelativeTime(item.addedAt)}`,
+          cover: item.coverArtUrl || '/album/am.jpg',
+        }
+      }),
+    [friendActivities],
+  )
 
   return (
     <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
@@ -381,7 +386,16 @@ export default function Home() {
           </div>
           <StatsPanel stats={stats} userActivity={userActivity} />
         </main>
-        <RecentActivitySection activity={recentActivity} />
+        <RecentActivitySection
+          activity={friendActivityRows}
+          isLoading={isFriendActivityLoading}
+          error={friendActivityError}
+          emptyMessage={
+            hasFriends
+              ? 'No friend activity yet.'
+              : 'No friend activity yet. Add friends to see their music activity.'
+          }
+        />
         <section className="card vinyl-texture">
           <div className="flex items-center justify-between gap-3">
             <div>

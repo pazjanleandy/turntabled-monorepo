@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Radio } from 'phosphor-react'
+import { ChatCircle, Headphones, Heart, Radio } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import LastFmConnectButton from '../components/LastFmConnectButton.jsx'
@@ -12,13 +12,13 @@ import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
+import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
-import {
-  friends,
-  profileUser,
-} from '../data/profileData.js'
+import { profileUser } from '../data/profileData.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
+import useFriendActivity from '../hooks/useFriendActivity.js'
+import useFriendsData from '../hooks/useFriendsData.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 import {
   PROFILE_EVENT_NAME,
@@ -220,6 +220,13 @@ function mapApiProfileToViewModel(profilePayload, fallbackUser) {
 
 export default function Profile() {
   const { isSignedIn } = useAuthStatus()
+  const {
+    activities: friendActivities,
+    isLoading: isFriendActivityLoading,
+    error: friendActivityError,
+    hasFriends,
+  } = useFriendActivity({ isSignedIn, limit: 24 })
+  const { friends: linkedFriends } = useFriendsData({ isSignedIn })
   const cachedProfile = readCachedProfile()
   const [profileView, setProfileView] = useState(() => ({
     user: {
@@ -239,7 +246,22 @@ export default function Profile() {
   const [reviewList, setReviewList] = useState([])
   const favorites = profileFavorites
   const recent = recentActivityLogs
-  const friendsList = friends
+  const friendsList = useMemo(
+    () =>
+      linkedFriends.map((row) => {
+        const username = row?.friend?.username || 'unknown'
+        const handle = `@${String(username).replace(/^@/, '')}`
+        return {
+          handle,
+          slug: row?.friend?.id || username,
+          name: username,
+          initials: username.slice(0, 2).toUpperCase() || 'U',
+          note: row?.friend?.bio || 'Friend',
+          activity: 'Friend',
+        }
+      }),
+    [linkedFriends],
+  )
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [lastfmUsername, setLastfmUsername] = useState('')
@@ -713,6 +735,42 @@ export default function Profile() {
     }
   }
 
+  const friendActivityRows = useMemo(
+    () =>
+      friendActivities.map((item) => {
+        const username = item?.user?.username || 'Unknown user'
+        if (item.type === 'review') {
+          return {
+            id: item.id,
+            icon: <ChatCircle size={16} weight="bold" />,
+            text: `${username} reviewed ${item.albumTitle}`,
+            meta: `${item.artistName} - ${formatRelativeTime(item.reviewedAt || item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
+          }
+        }
+        if (item.type === 'favorite') {
+          return {
+            id: item.id,
+            icon: <Heart size={16} weight="bold" />,
+            text: `${username} marked ${item.albumTitle} as favorite`,
+            meta: `${item.artistName} - ${formatRelativeTime(item.updatedAt || item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
+          }
+        }
+        return {
+          id: item.id,
+          icon: <Headphones size={16} weight="bold" />,
+          text:
+            typeof item.rating === 'number'
+              ? `${username} rated ${item.albumTitle} ${item.rating}/5`
+              : `${username} logged ${item.albumTitle}`,
+          meta: `${item.artistName} - ${formatRelativeTime(item.addedAt)}`,
+          cover: item.coverArtUrl || '/album/am.jpg',
+        }
+      }),
+    [friendActivities],
+  )
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
@@ -848,6 +906,19 @@ export default function Profile() {
                     />
                   </aside>
                 </div>
+              </section>
+
+              <section className="px-6 py-6 sm:px-8">
+                <RecentActivitySection
+                  activity={friendActivityRows}
+                  isLoading={isFriendActivityLoading}
+                  error={friendActivityError}
+                  emptyMessage={
+                    hasFriends
+                      ? 'No friend activity yet.'
+                      : 'No friend activity yet. Add friends to see their music activity.'
+                  }
+                />
               </section>
 
               <section className="px-6 py-6 sm:px-8">

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  Check,
+  Clock,
   DotsThreeOutlineVertical,
   Flame,
   FunnelSimple,
@@ -9,16 +11,17 @@ import {
   MapPinLine,
   MusicNotesSimple,
   Plus,
-  Sparkle,
   SquaresFour,
   Star,
   Users,
+  X,
 } from 'phosphor-react'
 import BackButton from '../components/BackButton.jsx'
 import Navbar from '../components/Navbar.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
+import useFriendsData from '../hooks/useFriendsData.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
-import { friends, profileUser } from '../data/profileData.js'
+import { profileUser } from '../data/profileData.js'
 
 const VIEW_MODE_STORAGE_KEY = 'turntabled:friends:view-mode'
 
@@ -134,7 +137,7 @@ function FilterChip({ active, disabled = false, onClick, children }) {
   )
 }
 
-function FriendRow({ friend, onNavigate }) {
+function FriendRow({ friend, onNavigate, onRemove, removeBusy = false }) {
   const presence = getPresence(friend)
 
   return (
@@ -220,8 +223,13 @@ function FriendRow({ friend, onNavigate }) {
               <button
                 type="button"
                 className="flex w-full rounded-lg px-2.5 py-2 text-left text-sm text-black/75 transition hover:bg-black/5"
+                disabled={removeBusy}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onRemove(friend.friendUserId || friend.id)
+                }}
               >
-                Remove friend
+                {removeBusy ? 'Removing...' : 'Remove friend'}
               </button>
               <button
                 type="button"
@@ -365,6 +373,17 @@ function SearchResultGridCard({ user }) {
 
 export default function Friends() {
   const { isSignedIn } = useAuthStatus()
+  const {
+    friends: friendRows,
+    incomingRequests,
+    isLoading: friendsLoading,
+    error: friendsError,
+    actionError,
+    actionKey,
+    acceptRequest,
+    rejectRequest,
+    removeFriend,
+  } = useFriendsData({ isSignedIn })
   const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
@@ -384,6 +403,32 @@ export default function Friends() {
   })
 
   const homeCity = getCity(profileUser?.location)
+  const friends = useMemo(
+    () =>
+      friendRows.map((row) => {
+        const username = row?.friend?.username || 'unknown'
+        const normalized = username.replace(/^@/, '')
+        return {
+          id: row?.friend?.id || row?.id || normalized,
+          friendUserId: row?.friend?.id || '',
+          slug: row?.friend?.id || normalized,
+          name: normalized,
+          handle: `@${normalized}`,
+          location: '',
+          activity: 'Offline',
+          note: row?.friend?.bio || '',
+          bio: row?.friend?.bio || '',
+          initials: normalized.slice(0, 2).toUpperCase() || 'U',
+          avatarSrc: row?.friend?.avatarUrl || '',
+          stats: {
+            logs: 0,
+            averageRating: 0,
+            streakDays: 0,
+          },
+        }
+      }),
+    [friendRows],
+  )
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -561,12 +606,23 @@ export default function Friends() {
                   {friends.length} friends
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white/70 px-3 py-1.5 text-xs font-semibold text-black/65 shadow-sm">
-                  <Sparkle className="h-3.5 w-3.5" />
-                  Mock profiles enabled
+                  <Clock className="h-3.5 w-3.5" />
+                  {incomingRequests.length} pending requests
                 </span>
               </div>
             </div>
           </header>
+
+          {friendsError ? (
+            <section className="rounded-2xl border border-black/5 bg-white/50 p-4 text-sm text-red-700 shadow-sm backdrop-blur">
+              {friendsError}
+            </section>
+          ) : null}
+          {actionError ? (
+            <section className="rounded-2xl border border-black/5 bg-white/50 p-4 text-sm text-red-700 shadow-sm backdrop-blur">
+              {actionError}
+            </section>
+          ) : null}
 
           <section className="space-y-4 rounded-2xl border border-black/5 bg-white/50 p-4 shadow-sm backdrop-blur sm:p-5">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
@@ -659,6 +715,83 @@ export default function Friends() {
             </div>
           </section>
 
+          {!hasSearchQuery ? (
+            <section className="space-y-4 rounded-2xl border border-black/5 bg-white/50 p-4 shadow-sm backdrop-blur sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="mb-1 text-sm uppercase tracking-widest text-black/45">
+                    Friend requests
+                  </p>
+                  <p className="mb-0 text-sm text-black/60">Incoming requests waiting for your response</p>
+                </div>
+                <span className="inline-flex items-center rounded-full border border-black/10 bg-white/70 px-2.5 py-1 text-xs font-semibold text-black/65">
+                  {incomingRequests.length}
+                </span>
+              </div>
+
+              {friendsLoading ? (
+                <p className="mb-0 text-sm text-black/60">Loading requests...</p>
+              ) : incomingRequests.length === 0 ? (
+                <p className="mb-0 text-sm text-black/60">No incoming friend requests.</p>
+              ) : (
+                <div className="space-y-2">
+                  {incomingRequests.map((request) => {
+                    const senderUsername = request?.sender?.username || 'unknown'
+                    const senderId = request?.sender?.id || request?.senderId
+                    const pendingAccept = actionKey === `accept:${request.id}`
+                    const pendingReject = actionKey === `reject:${request.id}`
+                    return (
+                      <article
+                        key={request.id}
+                        className="group rounded-2xl border border-black/5 bg-white/50 p-4 shadow-sm backdrop-blur"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div
+                            className="min-w-0 cursor-pointer"
+                            onClick={() => navigate(`/friends/${encodeURIComponent(senderId)}`)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                navigate(`/friends/${encodeURIComponent(senderId)}`)
+                              }
+                            }}
+                          >
+                            <p className="mb-0 truncate text-base font-semibold text-black/85">
+                              @{senderUsername.replace(/^@/, '')}
+                            </p>
+                            <p className="mb-0 mt-1 text-sm text-black/55">Wants to be your friend</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={pendingAccept || pendingReject}
+                              onClick={() => acceptRequest(request.id).catch(() => {})}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-100/70 px-3 text-xs font-semibold text-emerald-700 transition duration-200 ease-out hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              {pendingAccept ? 'Accepting...' : 'Accept'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pendingAccept || pendingReject}
+                              onClick={() => rejectRequest(request.id).catch(() => {})}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-red-500/35 bg-red-100/70 px-3 text-xs font-semibold text-red-700 transition duration-200 ease-out hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              {pendingReject ? 'Rejecting...' : 'Reject'}
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          ) : null}
+
           {hasSearchQuery ? (
             searchLoading ? (
               <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
@@ -696,6 +829,10 @@ export default function Friends() {
                 ))}
               </section>
             )
+          ) : friendsLoading ? (
+            <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
+              <p className="mb-0 text-sm text-black/60">Loading friends...</p>
+            </section>
           ) : hasNoFriends ? (
             <section className="rounded-2xl border border-black/5 bg-white/50 p-8 text-center shadow-sm backdrop-blur">
               <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl border border-dashed border-black/20 bg-white/70">
@@ -757,9 +894,11 @@ export default function Friends() {
                   <div className="space-y-2">
                     {group.items.map((friend) => (
                       <FriendRow
-                        key={friend.handle}
+                        key={friend.id}
                         friend={friend}
                         onNavigate={(slug) => navigate(`/friends/${slug}`)}
+                        onRemove={(friendUserId) => removeFriend(friendUserId).catch(() => {})}
+                        removeBusy={actionKey === `remove:${friend.friendUserId}`}
                       />
                     ))}
                   </div>
@@ -769,7 +908,7 @@ export default function Friends() {
           ) : (
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {sortedFriends.map((friend) => (
-                <FriendGridCard key={friend.handle} friend={friend} />
+                <FriendGridCard key={friend.id} friend={friend} />
               ))}
             </section>
           )}
