@@ -44,6 +44,23 @@ function mapFriendRow(row) {
   }
 }
 
+function getFriendFromAcceptedRequest(row, currentUserId) {
+  if (!row || !currentUserId) return null
+  const senderId = row?.sender_id ?? ''
+  const receiverId = row?.receiver_id ?? ''
+  const isSender = senderId === currentUserId
+  const friendId = isSender ? receiverId : senderId
+  const friendUser = isSender ? row?.receiver : row?.sender
+
+  if (!friendId) return null
+  return {
+    id: row?.id ?? `accepted-${currentUserId}-${friendId}`,
+    createdAt: row?.updated_at ?? row?.created_at ?? null,
+    friendId,
+    friend: mapPublicUser(friendUser),
+  }
+}
+
 function mapFriendRequestRow(row) {
   return {
     id: row?.id ?? '',
@@ -99,10 +116,27 @@ async function findRelationshipRequest(currentUserId, targetUserId) {
   return data
 }
 
+async function fetchAcceptedRequestRowsForUser(userId) {
+  const { data, error } = await supabase
+    .from('friend_requests')
+    .select(
+      'id,sender_id,receiver_id,status,created_at,updated_at,sender:sender_id(id,username,bio,avatar_url),receiver:receiver_id(id,username,bio,avatar_url)',
+    )
+    .eq('status', 'accepted')
+    .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+    .order('updated_at', { ascending: false })
+
+  if (error) {
+    throw new Error(error.message || 'Failed to load accepted friendships.')
+  }
+
+  return Array.isArray(data) ? data : []
+}
+
 export async function fetchFriends() {
   const userId = await requireAuthUserId()
 
-  const { data, error } = await supabase
+  const { data: friendRows, error } = await supabase
     .from('friends')
     .select('id,friend_id,created_at,friend:friend_id(id,username,bio,avatar_url)')
     .eq('user_id', userId)
@@ -112,7 +146,26 @@ export async function fetchFriends() {
     throw new Error(error.message || 'Failed to load friends.')
   }
 
-  return (data ?? []).map(mapFriendRow)
+  const acceptedRows = await fetchAcceptedRequestRowsForUser(userId)
+  const mergedByFriendId = new Map()
+
+  for (const row of friendRows ?? []) {
+    const mapped = mapFriendRow(row)
+    if (!mapped.friendId) continue
+    mergedByFriendId.set(mapped.friendId, mapped)
+  }
+
+  for (const row of acceptedRows) {
+    const mapped = getFriendFromAcceptedRequest(row, userId)
+    if (!mapped?.friendId || mergedByFriendId.has(mapped.friendId)) continue
+    mergedByFriendId.set(mapped.friendId, mapped)
+  }
+
+  return Array.from(mergedByFriendId.values()).sort((a, b) => {
+    const aTime = Date.parse(a?.createdAt ?? '') || 0
+    const bTime = Date.parse(b?.createdAt ?? '') || 0
+    return bTime - aTime
+  })
 }
 
 export async function fetchIncomingFriendRequests() {
@@ -358,6 +411,19 @@ export async function deleteFriendship(friendUserId) {
     throw new Error(error.message || 'Failed to delete friendship.')
   }
 
+  const nowIso = new Date().toISOString()
+  const { error: requestError } = await supabase
+    .from('friend_requests')
+    .update({ status: 'rejected', updated_at: nowIso })
+    .eq('status', 'accepted')
+    .or(
+      `and(sender_id.eq.${userId},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${userId})`,
+    )
+
+  if (requestError) {
+    throw new Error(requestError.message || 'Failed to update friendship state.')
+  }
+
   emitFriendsUpdated()
 }
 
@@ -373,8 +439,13 @@ export async function fetchFriendActivityFeed({ limit = 20 } = {}) {
     throw new Error(friendError.message || 'Failed to load friends.')
   }
 
+  const acceptedRows = await fetchAcceptedRequestRowsForUser(userId)
+  const acceptedFriendIds = acceptedRows
+    .map((row) => getFriendFromAcceptedRequest(row, userId)?.friendId)
+    .filter(Boolean)
+
   const friendIds = Array.from(
-    new Set((friendRows ?? []).map((row) => row?.friend_id).filter(Boolean)),
+    new Set([...(friendRows ?? []).map((row) => row?.friend_id), ...acceptedFriendIds].filter(Boolean)),
   )
 
   if (friendIds.length === 0) {
@@ -399,4 +470,3 @@ export async function fetchFriendActivityFeed({ limit = 20 } = {}) {
     activities: (data ?? []).map(mapFriendActivityRow),
   }
 }
-

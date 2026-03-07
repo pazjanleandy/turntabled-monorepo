@@ -152,6 +152,16 @@ export class ProfileRepository {
     return data ?? [];
   }
 
+  async listBacklogRowsForStats(userId) {
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select("status,rating,added_at,updated_at")
+      .eq("user_id", userId);
+
+    handleDbError(error, "fetching backlog rows for stats");
+    return data ?? [];
+  }
+
   async updateFavoriteByBacklogId(userId, backlogId, isFavorite) {
     const { data, error } = await this.supabase
       .from("backlog")

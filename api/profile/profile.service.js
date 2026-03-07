@@ -166,6 +166,75 @@ function mapCompleted(row) {
   };
 }
 
+const PUBLIC_BACKLOG_STATUSES = new Set(["backloggd", "pending", "listening", "unfinished"]);
+
+function toTimestamp(value) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function buildListeningStats(rows = []) {
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const previousYear = currentYear - 1;
+  const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+  let totalLogs = 0;
+  let logsLast30Days = 0;
+  let totalRating = 0;
+  let ratedCount = 0;
+  let thisYearCount = 0;
+  let lastYearCount = 0;
+  let backlogCount = 0;
+  const ratingFrequency = new Map();
+
+  for (const row of rows) {
+    totalLogs += 1;
+    const addedTime = toTimestamp(row?.added_at ?? row?.updated_at ?? "");
+    if (addedTime > 0) {
+      if (addedTime >= thirtyDaysAgo) logsLast30Days += 1;
+      const year = new Date(addedTime).getUTCFullYear();
+      if (year === currentYear) thisYearCount += 1;
+      if (year === previousYear) lastYearCount += 1;
+    }
+
+    const rating = Number(row?.rating);
+    if (Number.isFinite(rating) && rating >= 1 && rating <= 5) {
+      ratedCount += 1;
+      totalRating += rating;
+      const key = rating.toFixed(1);
+      ratingFrequency.set(key, (ratingFrequency.get(key) ?? 0) + 1);
+    }
+
+    const normalizedStatus = String(row?.status ?? "").trim().toLowerCase();
+    if (PUBLIC_BACKLOG_STATUSES.has(normalizedStatus)) {
+      backlogCount += 1;
+    }
+  }
+
+  let mostCommonRating = null;
+  let mostCommonCount = 0;
+  for (const [ratingValue, count] of ratingFrequency.entries()) {
+    const currentBest = mostCommonRating == null ? -Infinity : Number(mostCommonRating);
+    const candidate = Number(ratingValue);
+    if (count > mostCommonCount || (count === mostCommonCount && candidate > currentBest)) {
+      mostCommonCount = count;
+      mostCommonRating = ratingValue;
+    }
+  }
+
+  return {
+    totalLogs,
+    logsLast30Days,
+    avgRating: ratedCount > 0 ? Number((totalRating / ratedCount).toFixed(1)) : 0,
+    mostCommonRating,
+    thisYearCount,
+    lastYearCount,
+    backlogCount,
+    ratedCount,
+  };
+}
+
 function mapProfile(user, favorites, reviews) {
   return {
     user: {
@@ -183,7 +252,7 @@ function mapProfile(user, favorites, reviews) {
   };
 }
 
-function mapPublicProfile(user, profileMedia, favorites, completed, reviews, supabaseUrl) {
+function mapPublicProfile(user, profileMedia, favorites, completed, reviews, stats, supabaseUrl) {
   return {
     user: {
       id: user.id,
@@ -196,6 +265,7 @@ function mapPublicProfile(user, profileMedia, favorites, completed, reviews, sup
     favorites: favorites.map((item) => mapFavorite(item)),
     completed: completed.map((item) => mapCompleted(item)),
     reviews: reviews.map((item) => mapReview(item)),
+    stats,
   };
 }
 
@@ -244,14 +314,24 @@ export class ProfileService {
       throw new ValidationError("Use /api/profile to fetch the authenticated user's profile.");
     }
 
-    const [profileMedia, favorites, completed, reviews] = await Promise.all([
+    const [profileMedia, favorites, completed, reviews, statRows] = await Promise.all([
       this.profileRepository.findProfileMediaByUserId(user.id),
       this.profileRepository.listFavoritesByUser(user.id),
       this.profileRepository.listCompletedByUser(user.id),
       this.profileRepository.listReviewsByUser(user.id),
+      this.profileRepository.listBacklogRowsForStats(user.id),
     ]);
 
-    return mapPublicProfile(user, profileMedia, favorites, completed, reviews, this.supabaseUrl);
+    const stats = buildListeningStats(statRows);
+    return mapPublicProfile(
+      user,
+      profileMedia,
+      favorites,
+      completed,
+      reviews,
+      stats,
+      this.supabaseUrl
+    );
   }
 
   async searchPublicUsersByUsername(authenticatedUserId, query, { limit = 20 } = {}) {

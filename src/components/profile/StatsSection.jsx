@@ -6,26 +6,26 @@ export default function StatsSection({ statsData = null }) {
     {
       icon: <MusicNotes className="h-4 w-4" />,
       label: 'Albums logged',
-      value: '214',
-      hint: 'Last 30 days: 18',
+      value: '0',
+      hint: 'Last 30 days: 0',
     },
     {
       icon: <Star className="h-4 w-4" />,
       label: 'Avg rating',
-      value: '3.9',
-      hint: 'Most common: 4.0',
+      value: '0.0',
+      hint: 'Most common: N/A',
     },
     {
       icon: <Calendar className="h-4 w-4" />,
       label: 'This year',
-      value: '46',
-      hint: 'Goal: 120 albums',
+      value: '0',
+      hint: 'Last year: 0',
     },
     {
       icon: <ListBullets className="h-4 w-4" />,
       label: 'Backlog',
-      value: '83',
-      hint: 'Up next: 12 saved',
+      value: '0',
+      hint: 'Rated albums: 0',
     },
   ]
 

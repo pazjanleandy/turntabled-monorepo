@@ -10,7 +10,7 @@ import ProfileHeader from '../components/profile/ProfileHeader.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
-import { ChatCircle, Headphones, Heart } from 'phosphor-react'
+import { Calendar, ChatCircle, Headphones, Heart, ListBullets, MusicNotes, Star } from 'phosphor-react'
 import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
@@ -144,6 +144,10 @@ function mapLastFmTrackRowsToUnified(rows = []) {
 function toTimestamp(value) {
   const parsed = Date.parse(value ?? '')
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function formatStatNumber(value) {
+  return new Intl.NumberFormat('en-US').format(Math.max(0, Number(value) || 0))
 }
 
 function mergePublicActivity({ completed = [], favorites = [], reviews = [] }) {
@@ -440,6 +444,46 @@ export default function FriendProfile() {
       })),
     [publicActivity, targetIdentifier],
   )
+  const statsOverview = useMemo(() => {
+    const stats = payload?.stats
+    if (!stats || typeof stats !== 'object') {
+      return null
+    }
+
+    const avgRating = Number(stats?.avgRating ?? 0)
+    const avgLabel = Number.isFinite(avgRating) ? avgRating.toFixed(1) : '0.0'
+    const mostCommon =
+      typeof stats?.mostCommonRating === 'string' && stats.mostCommonRating.trim()
+        ? stats.mostCommonRating.trim()
+        : null
+
+    return [
+      {
+        icon: <MusicNotes className="h-4 w-4" />,
+        label: 'Albums logged',
+        value: formatStatNumber(stats?.totalLogs ?? 0),
+        hint: `Last 30 days: ${formatStatNumber(stats?.logsLast30Days ?? 0)}`,
+      },
+      {
+        icon: <Star className="h-4 w-4" />,
+        label: 'Avg rating',
+        value: avgLabel,
+        hint: mostCommon ? `Most common: ${mostCommon}` : 'Most common: N/A',
+      },
+      {
+        icon: <Calendar className="h-4 w-4" />,
+        label: 'This year',
+        value: formatStatNumber(stats?.thisYearCount ?? 0),
+        hint: `Last year: ${formatStatNumber(stats?.lastYearCount ?? 0)}`,
+      },
+      {
+        icon: <ListBullets className="h-4 w-4" />,
+        label: 'Backlog',
+        value: formatStatNumber(stats?.backlogCount ?? 0),
+        hint: `Rated albums: ${formatStatNumber(stats?.ratedCount ?? 0)}`,
+      },
+    ]
+  }, [payload])
   const friendActivityRows = useMemo(
     () =>
       friendActivities.map((item) => {
@@ -600,7 +644,7 @@ export default function FriendProfile() {
               </section>
 
               <section className="px-6 py-6 sm:px-8">
-                <StatsSection />
+                <StatsSection statsData={statsOverview} />
               </section>
 
               <section className="px-6 py-6 sm:px-8">
