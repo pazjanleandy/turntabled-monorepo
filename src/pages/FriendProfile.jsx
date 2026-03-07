@@ -65,6 +65,7 @@ function mapCompletedToRecent(items = []) {
   return items.map((item) => ({
     title: item?.album?.title ?? 'Unknown album',
     artist: item?.album?.artistName ?? 'Unknown artist',
+    cover: item?.album?.coverArtUrl || '/album/am.jpg',
     year: '',
     note: '',
     rating:
