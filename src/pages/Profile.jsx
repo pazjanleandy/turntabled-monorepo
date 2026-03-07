@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChatCircle, Headphones, Heart, Radio } from 'phosphor-react'
+import { Calendar, ChatCircle, Headphones, Heart, ListBullets, MusicNotes, Radio, Star } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import LastFmConnectButton from '../components/LastFmConnectButton.jsx'
@@ -29,6 +29,7 @@ import {
 import { supabase } from '../supabase.js'
 
 const BACKLOG_UPDATED_EVENT_NAME = 'turntabled:backlog-updated'
+const PROFILE_BACKLOG_STATUSES = new Set(['backloggd', 'pending', 'listening', 'unfinished'])
 
 function formatRelativeTime(value) {
   if (!value) return 'just now'
@@ -188,6 +189,10 @@ function mapRecentTracksToCarousel(tracks = []) {
   }))
 }
 
+function formatStatNumber(value) {
+  return new Intl.NumberFormat('en-US').format(Math.max(0, Number(value) || 0))
+}
+
 function mapApiProfileToViewModel(profilePayload, fallbackUser) {
   const apiUser = profilePayload?.user ?? {}
   const normalizedUsername =
@@ -272,6 +277,7 @@ export default function Profile() {
   })
   const [recentCarouselLoading, setRecentCarouselLoading] = useState(false)
   const [backlogPreview, setBacklogPreview] = useState([])
+  const [backlogItems, setBacklogItems] = useState([])
   const [backlogLoading, setBacklogLoading] = useState(false)
   const [editingReview, setEditingReview] = useState(null)
   const [isDeletingReview, setIsDeletingReview] = useState(false)
@@ -298,6 +304,7 @@ export default function Profile() {
   useEffect(() => {
     if (!isSignedIn) {
       setBacklogPreview([])
+      setBacklogItems([])
       setRecentActivityLogs([])
       setReviewList([])
       setProfileFavorites([])
@@ -355,7 +362,8 @@ export default function Profile() {
           }))
 
         if (!cancelled) {
-          setBacklogPreview([])
+          setBacklogPreview(sortedItems.slice(0, 8))
+          setBacklogItems(sortedItems)
           setRecentActivityLogs(latestLogs)
           setReviewList(mapBacklogReviews(sortedItems))
           setProfileFavorites((current) => mapBacklogFavoritesToAlbums(sortedItems, current))
@@ -363,6 +371,7 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setBacklogPreview([])
+          setBacklogItems([])
           setRecentCarousel([])
           setRecentActivityLogs([])
           setReviewList([])
@@ -405,6 +414,89 @@ export default function Profile() {
       }
     }
   }, [isSignedIn])
+
+  const statsOverview = useMemo(() => {
+    const now = new Date()
+    const currentYear = now.getUTCFullYear()
+    const previousYear = currentYear - 1
+    const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000
+
+    const rows = Array.isArray(backlogItems) ? backlogItems : []
+    const totalLogs = rows.length
+
+    let logsLast30Days = 0
+    let totalRating = 0
+    let ratedCount = 0
+    let thisYearCount = 0
+    let lastYearCount = 0
+    let backlogCount = 0
+    const ratingFrequency = new Map()
+
+    for (const item of rows) {
+      const addedRaw = item?.addedAt ?? item?.updatedAt ?? ''
+      const addedTime = Date.parse(addedRaw)
+      const addedDate = Number.isNaN(addedTime) ? null : new Date(addedTime)
+      if (addedDate) {
+        if (addedTime >= thirtyDaysAgo) logsLast30Days += 1
+        const year = addedDate.getUTCFullYear()
+        if (year === currentYear) thisYearCount += 1
+        if (year === previousYear) lastYearCount += 1
+      }
+
+      const rating = Number(item?.rating)
+      if (Number.isFinite(rating) && rating >= 1 && rating <= 5) {
+        ratedCount += 1
+        totalRating += rating
+        const key = rating.toFixed(1)
+        ratingFrequency.set(key, (ratingFrequency.get(key) ?? 0) + 1)
+      }
+
+      const normalizedStatus = String(item?.status ?? '').trim().toLowerCase()
+      if (PROFILE_BACKLOG_STATUSES.has(normalizedStatus)) {
+        backlogCount += 1
+      }
+    }
+
+    let mostCommonRating = null
+    let mostCommonCount = 0
+    for (const [ratingValue, count] of ratingFrequency.entries()) {
+      const currentBest = mostCommonRating == null ? -Infinity : Number(mostCommonRating)
+      const candidate = Number(ratingValue)
+      if (count > mostCommonCount || (count === mostCommonCount && candidate > currentBest)) {
+        mostCommonCount = count
+        mostCommonRating = ratingValue
+      }
+    }
+
+    const avgRatingValue = ratedCount > 0 ? (totalRating / ratedCount).toFixed(1) : '0.0'
+
+    return [
+      {
+        icon: <MusicNotes className="h-4 w-4" />,
+        label: 'Albums logged',
+        value: formatStatNumber(totalLogs),
+        hint: `Last 30 days: ${formatStatNumber(logsLast30Days)}`,
+      },
+      {
+        icon: <Star className="h-4 w-4" />,
+        label: 'Avg rating',
+        value: avgRatingValue,
+        hint: mostCommonRating ? `Most common: ${mostCommonRating}` : 'Most common: N/A',
+      },
+      {
+        icon: <Calendar className="h-4 w-4" />,
+        label: 'This year',
+        value: formatStatNumber(thisYearCount),
+        hint: `Last year: ${formatStatNumber(lastYearCount)}`,
+      },
+      {
+        icon: <ListBullets className="h-4 w-4" />,
+        label: 'Backlog',
+        value: formatStatNumber(backlogCount),
+        hint: `Rated albums: ${formatStatNumber(ratedCount)}`,
+      },
+    ]
+  }, [backlogItems])
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -829,7 +921,7 @@ export default function Profile() {
               </section>
 
               <section className="px-6 py-6 sm:px-8">
-                <StatsSection />
+                <StatsSection statsData={statsOverview} />
               </section>
 
               <section className="px-6 py-6 sm:px-8">

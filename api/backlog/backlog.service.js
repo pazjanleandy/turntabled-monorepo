@@ -91,6 +91,11 @@ function assertOptionalBoolean(value, fieldName) {
 }
 
 function mapItem(row) {
+  const albumTitle = row?.album?.title ?? null;
+  const albumArtistName = row?.album?.artist?.name ?? null;
+  const albumReleaseDate = row?.album?.release_date ?? null;
+  const albumPrimaryType = row?.album?.primary_type ?? null;
+
   return {
     id: row.id,
     albumId: row.album_id,
@@ -103,6 +108,11 @@ function mapItem(row) {
     reviewedAt: row.reviewed_at ?? null,
     addedAt: row.added_at,
     updatedAt: row.updated_at,
+    source: row.source ?? null,
+    albumTitle,
+    albumArtistName,
+    albumReleaseDate,
+    albumPrimaryType,
     coverArtUrl: row?.album?.cover_art_url ?? null,
   };
 }

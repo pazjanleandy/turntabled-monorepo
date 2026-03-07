@@ -14,16 +14,17 @@ export class BacklogRepository {
     this.supabase = supabase;
   }
 
+  buildBacklogSelect() {
+    return "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,source,added_at,updated_at,album:album_id(id,title,release_date,primary_type,cover_art_url,artist:artist_id(name))";
+  }
+
   async listByUser(userId, page, limit) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
     const { data, error, count } = await this.supabase
       .from("backlog")
-      .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)",
-        { count: "exact" }
-      )
+      .select(this.buildBacklogSelect(), { count: "exact" })
       .eq("user_id", userId)
       .order("added_at", { ascending: false })
       .range(from, to);
@@ -35,9 +36,7 @@ export class BacklogRepository {
   async findById(id) {
     const { data, error } = await this.supabase
       .from("backlog")
-      .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
-      )
+      .select(this.buildBacklogSelect())
       .eq("id", id)
       .maybeSingle();
 
@@ -48,9 +47,7 @@ export class BacklogRepository {
   async findDuplicateByUser(userId, albumId) {
     const { data, error } = await this.supabase
       .from("backlog")
-      .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
-      )
+      .select(this.buildBacklogSelect())
       .eq("user_id", userId)
       .eq("album_id", albumId)
       .maybeSingle();
@@ -62,9 +59,7 @@ export class BacklogRepository {
   async findByUserAndAlbum(userId, albumId) {
     const { data, error } = await this.supabase
       .from("backlog")
-      .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
-      )
+      .select(this.buildBacklogSelect())
       .eq("user_id", userId)
       .eq("album_id", albumId)
       .maybeSingle();
@@ -91,9 +86,7 @@ export class BacklogRepository {
     const { data, error } = await this.supabase
       .from("backlog")
       .insert(payload)
-      .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
-      )
+      .select(this.buildBacklogSelect())
       .single();
 
     handleDbError(error, "creating backlog item");
@@ -121,9 +114,7 @@ export class BacklogRepository {
       .from("backlog")
       .update(payload)
       .eq("id", id)
-      .select(
-        "id,user_id,album_id,artist_name_raw,album_title_raw,status,rating,is_favorite,review_text,reviewed_at,added_at,updated_at,album:album_id(id,cover_art_url)"
-      )
+      .select(this.buildBacklogSelect())
       .single();
 
     handleDbError(error, "updating backlog item");

@@ -1,8 +1,8 @@
 import { Calendar, ListBullets, MusicNotes, Star } from 'phosphor-react'
 import Stat from './Stat.jsx'
 
-export default function StatsSection() {
-  const stats = [
+export default function StatsSection({ statsData = null }) {
+  const stats = Array.isArray(statsData) && statsData.length === 4 ? statsData : [
     {
       icon: <MusicNotes className="h-4 w-4" />,
       label: 'Albums logged',

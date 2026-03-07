@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { FunnelSimple, MagnifyingGlass, Star } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import BackButton from '../components/BackButton.jsx'
 import CoverImage from '../components/CoverImage.jsx'
-import { albumCatalog } from '../data/albumData.js'
-import { loggedAlbums } from '../data/loggedAlbums.js'
+import useAuthStatus from '../hooks/useAuthStatus.js'
+import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
 const FILTER_OPTIONS = [
   { value: 'added-latest', label: 'Added (Latest)' },
@@ -26,29 +26,117 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
 const formatDate = (value) => dateFormatter.format(new Date(value))
 
 export default function Activity() {
+  const { isSignedIn } = useAuthStatus()
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState('')
+  const [items, setItems] = useState([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const filterFromUrl = searchParams.get('filter')
   const activeFilter =
     FILTER_OPTIONS.find((option) => option.value === filterFromUrl)?.value ??
     DEFAULT_FILTER
 
-  const logs = useMemo(
-    () =>
-      loggedAlbums
-        .map((entry) => {
-          const album = albumCatalog[entry.albumId]
-          if (!album) return null
-          return {
-            ...album,
-            ...entry,
-            addedTimestamp: new Date(entry.addedAt).getTime(),
-            releaseTimestamp: new Date(album.releaseDate).getTime(),
+  useEffect(() => {
+    if (!isSignedIn) {
+      setItems([])
+      setError('')
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    const loadActivity = async () => {
+      setIsLoading(true)
+      setError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const authHeaders = await buildApiAuthHeaders()
+        const pageSize = 50
+        let page = 1
+        let total = Number.POSITIVE_INFINITY
+        const allItems = []
+
+        while (!cancelled && allItems.length < total) {
+          const response = await fetch(`${apiBase}/api/backlog?page=${page}&limit=${pageSize}`, {
+            headers: authHeaders,
+            signal: controller.signal,
+          })
+
+          const payload = await response.json()
+          if (!response.ok) {
+            throw new Error(payload?.error?.message ?? 'Failed to load logged albums.')
           }
-        })
-        .filter(Boolean),
-    [],
-  )
+
+          const pageItems = Array.isArray(payload?.items) ? payload.items : []
+          total = Number(payload?.total ?? pageItems.length)
+          allItems.push(...pageItems)
+          if (!pageItems.length) break
+          page += 1
+        }
+
+        if (!cancelled) {
+          setItems(allItems)
+        }
+      } catch (loadErr) {
+        if (loadErr?.name === 'AbortError') return
+        if (!cancelled) {
+          setItems([])
+          setError(loadErr?.message ?? 'Unable to load logged albums.')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadActivity()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [isSignedIn])
+
+  const logs = useMemo(() => {
+    if (!Array.isArray(items)) return []
+
+    return items
+      .map((entry) => {
+        const addedAt = entry?.addedAt ?? entry?.updatedAt ?? null
+        if (!addedAt) return null
+
+        const releaseDate = entry?.albumReleaseDate ?? addedAt
+        const addedTimestamp = Date.parse(addedAt)
+        const releaseTimestamp = Date.parse(releaseDate)
+        const rating = Number(entry?.rating ?? 0)
+        const parsedReleaseYear = Number.parseInt(String(releaseDate).slice(0, 4), 10)
+        const normalizedStatus = String(entry?.status ?? '').trim().toLowerCase()
+
+        return {
+          logId: entry?.id,
+          albumId: entry?.albumId,
+          title: entry?.albumTitle ?? entry?.albumTitleRaw ?? 'Untitled album',
+          artist: entry?.albumArtistName ?? entry?.artistNameRaw ?? 'Unknown artist',
+          year: Number.isFinite(parsedReleaseYear) ? parsedReleaseYear : '----',
+          format: (entry?.albumPrimaryType ?? 'album').toString().toUpperCase(),
+          releaseDate,
+          label: entry?.source ? String(entry.source).toUpperCase() : 'LOG',
+          length: '--:--',
+          type: normalizedStatus || 'album',
+          note: entry?.reviewText ?? 'No review yet.',
+          genres: [],
+          photo: entry?.coverArtUrl ?? '',
+          rating: Number.isFinite(rating) ? rating : 0,
+          addedAt,
+          addedTimestamp: Number.isNaN(addedTimestamp) ? 0 : addedTimestamp,
+          releaseTimestamp: Number.isNaN(releaseTimestamp) ? 0 : releaseTimestamp,
+        }
+      })
+      .filter((entry) => entry && entry.addedTimestamp > 0)
+  }, [items])
 
   const summary = useMemo(() => {
     if (!logs.length) {
@@ -181,7 +269,19 @@ export default function Activity() {
               {visibleLogs.length} result{visibleLogs.length === 1 ? '' : 's'}
             </span>
           </div>
-          {visibleLogs.length === 0 ? (
+          {!isSignedIn ? (
+            <div className="rounded-soft border border-black/5 bg-white/75 p-6 text-sm text-muted shadow-subtle">
+              Sign in to view your logged albums.
+            </div>
+          ) : isLoading ? (
+            <div className="rounded-soft border border-black/5 bg-white/75 p-6 text-sm text-muted shadow-subtle">
+              Loading your logged albums...
+            </div>
+          ) : error ? (
+            <div className="rounded-soft border border-red-200 bg-red-50/70 p-6 text-sm text-red-700 shadow-subtle">
+              {error}
+            </div>
+          ) : visibleLogs.length === 0 ? (
             <div className="rounded-soft border border-black/5 bg-white/75 p-6 text-sm text-muted shadow-subtle">
               No logs matched your search. Try a different keyword or filter.
             </div>
