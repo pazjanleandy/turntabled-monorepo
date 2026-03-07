@@ -27,7 +27,7 @@ function App() {
         <Route path="/friends/:friendSlug" element={<FriendProfile />} />
         <Route path="/album/:releaseId" element={<AlbumPage />} />
         <Route path="/auth/lastfm/callback" element={<LastFmCallbackPage />} />
-        <Route path="/artist/:artistId" element={<ArtistProfile />} />
+        <Route path="/artist/:normalized_name" element={<ArtistProfile />} />
         <Route path="*" element={<Home />} />
       </Routes>
     </BrowserRouter>

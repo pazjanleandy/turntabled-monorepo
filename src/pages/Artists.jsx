@@ -4,8 +4,8 @@ import NavbarGuest from '../components/NavbarGuest.jsx'
 import ArtistRow from '../components/artists/ArtistRow.jsx'
 import ArtistsAZIndex from '../components/artists/ArtistsAZIndex.jsx'
 import ArtistSectionHeader from '../components/artists/ArtistSectionHeader.jsx'
-import { loadArtists } from '../data/loadArtists.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
+import { supabase } from '../supabase.js'
 import {
   getAvailableLetters,
   groupArtistsByLetter,
@@ -48,15 +48,48 @@ export default function Artists() {
   useEffect(() => {
     let cancelled = false
 
-    const timer = window.setTimeout(() => {
+    async function fetchArtists() {
+      const { data, error } = await supabase
+        .from('artist')
+        .select(
+          `
+          id,
+          name,
+          normalized_name,
+          mbid,
+          country,
+          disambiguation,
+          image_url,
+          created_at,
+          updated_at,
+          album (
+            id,
+            updated_at,
+            backlog (
+              id,
+              updated_at
+            )
+          )
+          `,
+        )
+        .order('name', { ascending: true })
+
       if (cancelled) return
-      setArtists(loadArtists())
+
+      if (error) {
+        setArtists([])
+        setIsLoading(false)
+        return
+      }
+
+      setArtists(Array.isArray(data) ? data : [])
       setIsLoading(false)
-    }, 150)
+    }
+
+    fetchArtists()
 
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
     }
   }, [])
 
@@ -64,9 +97,26 @@ export default function Artists() {
     () =>
       artists.map((artist) => ({
         ...artist,
-        albumsLogged: Array.isArray(artist?.notableAlbums) ? artist.notableAlbums.length : 0,
+        origin: artist?.country ?? '',
+        genres: [],
+        albumsLogged: Array.isArray(artist?.album)
+          ? artist.album.reduce(
+              (total, entry) =>
+                total + (Array.isArray(entry?.backlog) ? entry.backlog.length : 0),
+              0,
+            )
+          : 0,
         recentlyLoggedAtMs: toTimestamp(
-          artist?.recentlyLoggedAt ?? artist?.lastLoggedAt ?? artist?.updatedAt,
+          Array.isArray(artist?.album)
+            ? artist.album
+                .flatMap((entry) =>
+                  Array.isArray(entry?.backlog) ? entry.backlog.map((log) => log?.updated_at) : [],
+                )
+                .filter(Boolean)
+                .sort((left, right) => String(right).localeCompare(String(left)))[0]
+            : null,
+        ) || toTimestamp(
+          artist?.updated_at ?? artist?.created_at,
         ),
       })),
     [artists],
@@ -77,8 +127,7 @@ export default function Artists() {
     if (!term) return enrichedArtists
 
     return enrichedArtists.filter((artist) => {
-      const genres = Array.isArray(artist?.genres) ? artist.genres.join(' ') : ''
-      return [artist?.name, artist?.origin, genres].some((field) =>
+      return [artist?.name, artist?.country, artist?.disambiguation].some((field) =>
         String(field ?? '')
           .toLowerCase()
           .includes(term),
