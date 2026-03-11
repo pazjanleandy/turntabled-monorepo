@@ -1,27 +1,39 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
 import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
+import MobileProfileMediaSection from '../components/profile/MobileProfileMediaSection.jsx'
+import MobileSocialSection from '../components/profile/MobileSocialSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
-import { Calendar, ChatCircle, Headphones, Heart, ListBullets, MusicNotes, Star } from 'phosphor-react'
+import HomeMobileHeader from '../components/home/HomeMobileHeader.jsx'
+import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import {
+  Calendar,
+  Check,
+  ListBullets,
+  MusicNotes,
+  Star,
+  UserMinus,
+  UserPlus,
+} from 'phosphor-react'
 import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import useFriendActivity from '../hooks/useFriendActivity.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+import { mapFriendActivityFeed } from '../lib/friendActivityFeed.jsx'
+import { readCachedProfile } from '../lib/profileClient.js'
 import {
-  acceptFriendRequest,
-  deleteFriendship,
-  fetchRelationshipWithUser,
-  rejectFriendRequest,
-  sendFriendRequest,
+  fetchFollowStateWithUser,
+  followUser,
+  unfollowUser,
 } from '../lib/friendsClient.js'
 
 function isUuidLike(value = '') {
@@ -197,7 +209,8 @@ function mapReviews(items = []) {
 }
 
 export default function FriendProfile() {
-  const { isSignedIn } = useAuthStatus()
+  const navigate = useNavigate()
+  const { isSignedIn, signOut } = useAuthStatus()
   const {
     activities: friendActivities,
     isLoading: isFriendActivityLoading,
@@ -206,6 +219,7 @@ export default function FriendProfile() {
   } = useFriendActivity({ isSignedIn, limit: 18 })
   const { friendSlug } = useParams()
   const targetIdentifier = friendSlug ?? ''
+  const cachedProfile = readCachedProfile()
 
   const [payload, setPayload] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -213,10 +227,16 @@ export default function FriendProfile() {
   const [recentlyListened, setRecentlyListened] = useState([])
   const [recentlyListenedLoading, setRecentlyListenedLoading] = useState(false)
   const [recentlyListenedError, setRecentlyListenedError] = useState('')
-  const [relationship, setRelationship] = useState({ status: 'none', request: null })
-  const [relationshipLoading, setRelationshipLoading] = useState(false)
-  const [relationshipError, setRelationshipError] = useState('')
-  const [relationshipActionLoading, setRelationshipActionLoading] = useState(false)
+  const [followState, setFollowState] = useState({ status: 'not_following', followedAt: null })
+  const [followStateLoading, setFollowStateLoading] = useState(false)
+  const [followStateError, setFollowStateError] = useState('')
+  const [followActionLoading, setFollowActionLoading] = useState(false)
+  const [isFollowingHovered, setIsFollowingHovered] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [navUser, setNavUser] = useState(() => ({
+    username: cachedProfile?.username || '',
+    avatarUrl: cachedProfile?.avatarUrl || '',
+  }))
 
   useEffect(() => {
     let cancelled = false
@@ -336,58 +356,109 @@ export default function FriendProfile() {
   useEffect(() => {
     let cancelled = false
 
-    async function loadRelationship() {
+    async function loadFollowState() {
       const targetUserId = payload?.user?.id
       if (!isSignedIn || !targetUserId) {
-        setRelationship({ status: 'none', request: null })
-        setRelationshipError('')
-        setRelationshipLoading(false)
+        setFollowState({ status: 'not_following', followedAt: null })
+        setFollowStateError('')
+        setFollowStateLoading(false)
         return
       }
 
-      setRelationshipLoading(true)
-      setRelationshipError('')
+      setFollowStateLoading(true)
+      setFollowStateError('')
       try {
-        const next = await fetchRelationshipWithUser(targetUserId)
+        const next = await fetchFollowStateWithUser(targetUserId)
         if (!cancelled) {
-          setRelationship(next)
+          setFollowState(next)
         }
       } catch (loadError) {
         if (!cancelled) {
-          setRelationship({ status: 'none', request: null })
-          setRelationshipError(loadError?.message ?? 'Failed to load friend relationship.')
+          setFollowState({ status: 'not_following', followedAt: null })
+          setFollowStateError(loadError?.message ?? 'Failed to load follow state.')
         }
       } finally {
         if (!cancelled) {
-          setRelationshipLoading(false)
+          setFollowStateLoading(false)
         }
       }
     }
 
-    loadRelationship()
+    loadFollowState()
     return () => {
       cancelled = true
     }
   }, [isSignedIn, payload?.user?.id])
 
-  const refreshRelationship = async () => {
+  const refreshFollowState = async () => {
     const targetUserId = payload?.user?.id
     if (!targetUserId) return
-    const next = await fetchRelationshipWithUser(targetUserId)
-    setRelationship(next)
+    const next = await fetchFollowStateWithUser(targetUserId)
+    setFollowState(next)
   }
 
-  const runRelationshipAction = async (task) => {
-    setRelationshipError('')
-    setRelationshipActionLoading(true)
+  const runFollowAction = async (task) => {
+    setFollowStateError('')
+    setFollowActionLoading(true)
     try {
       await task()
-      await refreshRelationship()
+      await refreshFollowState()
     } catch (actionError) {
-      setRelationshipError(actionError?.message ?? 'Friend action failed.')
+      setFollowStateError(actionError?.message ?? 'Follow action failed.')
     } finally {
-      setRelationshipActionLoading(false)
+      setFollowActionLoading(false)
     }
+  }
+  const targetUserId = payload?.user?.id ?? ''
+  const isFollowing = followState.status === 'following'
+  const showUnfollowOnHover = isFollowing && isFollowingHovered
+  const followButtonBusy = followStateLoading || followActionLoading
+  const followButtonLabel = followStateLoading
+    ? 'Checking...'
+    : followActionLoading
+      ? 'Updating...'
+      : showUnfollowOnHover
+        ? 'Unfollow'
+        : isFollowing
+          ? 'Following'
+        : 'Follow'
+  const followButtonClassName = isFollowing
+    ? 'inline-flex w-40 h-9 items-center justify-center gap-2 rounded-xl border border-orange-500/35 bg-accent px-4 text-[15px] font-semibold tracking-tight text-[#1f130c] shadow-sm transition hover:bg-[#ef6b2f] active:bg-[#e86124] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2'
+    : 'inline-flex w-40 h-9 items-center justify-center gap-2 rounded-xl border border-black/12 bg-white/45 px-4 text-[15px] font-semibold tracking-tight text-black/80 shadow-none transition hover:bg-white/75 active:bg-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2'
+  const followButtonDisabled =
+    followButtonBusy || !isSignedIn || !targetUserId || followState.status === 'self'
+  const handleHeaderFollowAction = () => {
+    if (followButtonDisabled) return
+    if (isFollowing) {
+      void runFollowAction(() => unfollowUser(targetUserId))
+      return
+    }
+    void runFollowAction(() => followUser(targetUserId))
+  }
+
+  useEffect(() => {
+    if (!isFollowing) {
+      setIsFollowingHovered(false)
+    }
+  }, [isFollowing])
+
+  useEffect(() => {
+    if (!isSidebarOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isSidebarOpen])
+
+  const openSidebar = () => setIsSidebarOpen(true)
+  const closeSidebar = () => setIsSidebarOpen(false)
+
+  const handleMobileSignOut = () => {
+    signOut()
+    setNavUser({ username: '', avatarUrl: '' })
+    setIsSidebarOpen(false)
+    navigate('/')
   }
 
   const favorites = useMemo(
@@ -432,6 +503,14 @@ export default function FriendProfile() {
       initials: createInitials(username),
     }
   }, [payload])
+  const socialCounts = useMemo(() => {
+    const followers = Number(payload?.social?.followers)
+    const following = Number(payload?.social?.following)
+    return {
+      followers: Number.isFinite(followers) ? Math.max(0, followers) : 0,
+      following: Number.isFinite(following) ? Math.max(0, following) : 0,
+    }
+  }, [payload])
 
   const backlogPreview = useMemo(
     () =>
@@ -441,6 +520,7 @@ export default function FriendProfile() {
         artistNameRaw: item?.album?.artistName ?? 'Unknown artist',
         coverArtUrl: item?.album?.coverArtUrl || '/album/am.jpg',
         rating: item?.rating ?? 0,
+        status: 'backloggd',
       })),
     [publicActivity, targetIdentifier],
   )
@@ -485,254 +565,229 @@ export default function FriendProfile() {
     ]
   }, [payload])
   const friendActivityRows = useMemo(
-    () =>
-      friendActivities.map((item) => {
-        const username = item?.user?.username || 'Unknown user'
-        if (item.type === 'review') {
-          return {
-            id: item.id,
-            icon: <ChatCircle size={16} weight="bold" />,
-            text: `${username} reviewed ${item.albumTitle}`,
-            meta: `${item.artistName} - ${formatRelativeTime(item.reviewedAt || item.addedAt)}`,
-            cover: item.coverArtUrl || '/album/am.jpg',
-          }
-        }
-        if (item.type === 'favorite') {
-          return {
-            id: item.id,
-            icon: <Heart size={16} weight="bold" />,
-            text: `${username} marked ${item.albumTitle} as favorite`,
-            meta: `${item.artistName} - ${formatRelativeTime(item.updatedAt || item.addedAt)}`,
-            cover: item.coverArtUrl || '/album/am.jpg',
-          }
-        }
-        return {
-          id: item.id,
-          icon: <Headphones size={16} weight="bold" />,
-          text:
-            typeof item.rating === 'number'
-              ? `${username} rated ${item.albumTitle} ${item.rating}/5`
-              : `${username} logged ${item.albumTitle}`,
-          meta: `${item.artistName} - ${formatRelativeTime(item.addedAt)}`,
-          cover: item.coverArtUrl || '/album/am.jpg',
-        }
-      }),
+    () => mapFriendActivityFeed(friendActivities),
     [friendActivities],
+  )
+  const hasLastFmConnection = Boolean(
+    typeof payload?.user?.lastfmUsername === 'string' && payload.user.lastfmUsername.trim(),
+  )
+
+  const renderScaffold = (content) => (
+    <div className="min-h-screen">
+      <div className="md:hidden">
+        <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} />
+      </div>
+      <div className="md:hidden">
+        <HomeMobileSidebar
+          isOpen={isSidebarOpen}
+          navUser={navUser}
+          isSignedIn={isSignedIn}
+          onClose={closeSidebar}
+          onSignOut={handleMobileSignOut}
+        />
+      </div>
+
+      <div className="mx-auto w-full max-w-[430px] px-4 pb-8 pt-0 sm:px-5 md:max-w-6xl md:px-6 md:py-6 lg:px-8">
+        <div className="space-y-0 md:space-y-6">
+          <div className="hidden md:block">
+            <Navbar className="mx-auto w-[min(100%,900px)]" />
+          </div>
+          {content}
+        </div>
+      </div>
+    </div>
   )
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="space-y-6">
-            <Navbar className="w-full" />
-            <section className="card vinyl-texture border border-black/5 shadow-sm">
-              <p className="mb-0 text-sm text-slate-600">Loading profile...</p>
-            </section>
-          </div>
+    return renderScaffold(
+      <main className="overflow-visible rounded-none border-0 bg-transparent shadow-none md:overflow-hidden md:rounded-3xl md:border md:border-[var(--border)] md:bg-[var(--card)] md:backdrop-blur-md md:shadow-sm">
+        <div className="divide-y divide-black/8 md:divide-[var(--border)]">
+          <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+            <p className="mb-0 text-sm text-slate-600">Loading profile...</p>
+          </section>
         </div>
-      </div>
+      </main>,
     )
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="space-y-6">
-            <Navbar className="w-full" />
-            <section className="card vinyl-texture border border-black/5 shadow-sm">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                Friends
-              </p>
-              <h1 className="mb-2 text-2xl text-text">Profile unavailable</h1>
-              <p className="mb-4 text-sm text-slate-600">{error}</p>
-              <Link
-                to="/friends"
-                className="inline-flex rounded-xl border border-black/10 bg-white/85 px-4 py-2 text-sm font-semibold text-text shadow-sm transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-              >
-                Back to friends
-              </Link>
-            </section>
-          </div>
+    return renderScaffold(
+      <main className="overflow-visible rounded-none border-0 bg-transparent shadow-none md:overflow-hidden md:rounded-3xl md:border md:border-[var(--border)] md:bg-[var(--card)] md:backdrop-blur-md md:shadow-sm">
+        <div className="divide-y divide-black/8 md:divide-[var(--border)]">
+          <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+              Friends
+            </p>
+            <h1 className="mb-2 text-2xl text-text">Profile unavailable</h1>
+            <p className="mb-4 text-sm text-slate-600">{error}</p>
+            <Link
+              to="/friends"
+              className="inline-flex rounded-xl border border-black/10 bg-white/85 px-4 py-2 text-sm font-semibold text-text shadow-sm transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+            >
+              Back to friends
+            </Link>
+          </section>
         </div>
-      </div>
+      </main>,
     )
   }
 
-  return (
-    <div className="min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          <Navbar className="w-full" />
-          <main className="overflow-hidden rounded-3xl border border-black/5 bg-white/60 backdrop-blur-md shadow-sm">
-            <div className="divide-y divide-black/5">
-              <section className="py-0">
-                <ProfileHeader
-                  embedded
-                  allowProfileEditing={false}
-                  user={user}
-                  avatarSrc={payload?.user?.avatarUrl || '/profile/rainy.jpg'}
-                  bannerSrc={payload?.user?.coverUrl || '/hero/hero1.jpg'}
-                />
-              </section>
+  return renderScaffold(
+    <main className="overflow-visible rounded-none border-0 bg-transparent shadow-none md:overflow-hidden md:rounded-3xl md:border md:border-[var(--border)] md:bg-[var(--card)] md:backdrop-blur-md md:shadow-sm">
+      <div className="divide-y divide-black/8 md:divide-[var(--border)]">
+        <section className="py-0">
+          <ProfileHeader
+            embedded
+            compactMobile
+            allowProfileEditing={false}
+            user={user}
+            avatarSrc={payload?.user?.avatarUrl || '/profile/rainy.jpg'}
+            bannerSrc={payload?.user?.coverUrl || '/hero/hero1.jpg'}
+            followerCount={socialCounts.followers}
+            followingCount={socialCounts.following}
+            showSecondaryAction={followState.status !== 'self'}
+            secondaryActionLabel={followButtonLabel}
+            secondaryActionIcon={
+              showUnfollowOnHover ? (
+                <UserMinus className="h-4 w-4" weight="bold" />
+              ) : isFollowing ? (
+                <Check className="h-4 w-4" weight="bold" />
+              ) : (
+                <UserPlus className="h-4 w-4" weight="bold" />
+              )
+            }
+            onSecondaryAction={handleHeaderFollowAction}
+            secondaryActionDisabled={followButtonDisabled}
+            secondaryActionClassName={followButtonClassName}
+            onSecondaryActionMouseEnter={() => {
+              if (isFollowing && !followButtonDisabled) setIsFollowingHovered(true)
+            }}
+            onSecondaryActionMouseLeave={() => setIsFollowingHovered(false)}
+            onSecondaryActionFocus={() => {
+              if (isFollowing && !followButtonDisabled) setIsFollowingHovered(true)
+            }}
+            onSecondaryActionBlur={() => setIsFollowingHovered(false)}
+          />
+        </section>
 
-              <section className="px-6 py-5 sm:px-8">
-                <div className="rounded-2xl border border-black/8 bg-white/70 p-4">
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                    Friendship
-                  </p>
-                  {relationshipLoading ? (
-                    <p className="mb-0 text-sm text-slate-600">Checking friend status...</p>
-                  ) : relationship.status === 'friends' ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-lg border border-emerald-400/35 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                        Friends
-                      </span>
-                      <button
-                        type="button"
-                        disabled={relationshipActionLoading}
-                        onClick={() =>
-                          runRelationshipAction(() => deleteFriendship(payload?.user?.id))
-                        }
-                        className="rounded-lg border border-black/15 bg-white px-3 py-2 text-xs font-semibold text-black/70 transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Remove Friend
-                      </button>
-                    </div>
-                  ) : relationship.status === 'outgoing_pending' ? (
-                    <span className="rounded-lg border border-black/15 bg-white px-3 py-2 text-xs font-semibold text-black/60">
-                      Request Sent
-                    </span>
-                  ) : relationship.status === 'incoming_pending' ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={relationshipActionLoading}
-                        onClick={() =>
-                          runRelationshipAction(() => acceptFriendRequest(relationship.request?.id))
-                        }
-                        className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        type="button"
-                        disabled={relationshipActionLoading}
-                        onClick={() =>
-                          runRelationshipAction(() => rejectFriendRequest(relationship.request?.id))
-                        }
-                        className="rounded-lg border border-red-500/25 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={relationshipActionLoading || !isSignedIn}
-                      onClick={() => runRelationshipAction(() => sendFriendRequest(payload?.user?.id))}
-                      className="rounded-lg border border-orange-500/35 bg-accent px-3 py-2 text-xs font-semibold text-[#1f130c] transition hover:bg-[#ef6b2f] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Add Friend
-                    </button>
-                  )}
-                  {relationshipError ? (
-                    <p className="mb-0 mt-2 text-sm text-red-700">{relationshipError}</p>
-                  ) : null}
+        {followStateError ? (
+          <section className="px-0 py-4 md:px-6 md:py-4 lg:px-8">
+            <p className="mb-0 text-sm text-red-700">{followStateError}</p>
+          </section>
+        ) : null}
+
+        <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+          <StatsSection statsData={statsOverview} compactMobile />
+        </section>
+
+        <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-5 md:gap-6 lg:grid-cols-12">
+            <aside className="flex flex-col gap-5 md:gap-6 lg:col-span-8">
+              <FavoritesSection
+                favorites={favorites}
+                favoriteCovers={favoriteCovers}
+                favoriteRatings={favoriteRatings}
+                onFavoriteRatingChange={handleFavoriteRatingChange}
+                recentCarousel={recentCarousel}
+                isLoadingRecent={recentlyListenedLoading}
+                compactMobile
+              />
+              <ReviewsSection reviews={reviewList} asCard={false} compactMobile />
+            </aside>
+
+            <aside className="flex flex-col gap-5 md:gap-6 lg:col-span-4">
+              <MobileProfileMediaSection
+                backlogItems={backlogPreview}
+                isBacklogLoading={false}
+                latestLogs={recent}
+                tracks={recentTracks}
+                isTracksLoading={recentlyListenedLoading}
+                tracksError={recentlyListenedError}
+                hasLastFmConnection={hasLastFmConnection}
+              />
+
+              <section className="hidden space-y-2.5 md:block md:rounded-2xl md:border md:border-[var(--border)] md:bg-[var(--surface-2)] md:p-5 md:shadow-md">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                      Backlog
+                    </p>
+                    <h3 className="mb-0 text-lg text-text">Completed albums</h3>
+                  </div>
                 </div>
-              </section>
-
-              <section className="px-6 py-6 sm:px-8">
-                <StatsSection statsData={statsOverview} />
-              </section>
-
-              <section className="px-6 py-6 sm:px-8">
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-                  <aside className="flex flex-col gap-6 lg:col-span-8">
-                    <FavoritesSection
-                      favorites={favorites}
-                      favoriteCovers={favoriteCovers}
-                      favoriteRatings={favoriteRatings}
-                      onFavoriteRatingChange={handleFavoriteRatingChange}
-                      recentCarousel={recentCarousel}
-                      isLoadingRecent={recentlyListenedLoading}
-                    />
-                    <ReviewsSection reviews={reviewList} asCard={false} />
-                  </aside>
-
-                  <aside className="flex flex-col gap-6 lg:col-span-4">
-                    <section className="rounded-2xl border border-black/10 bg-white/70 p-5 shadow-md">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                            Backlog
-                          </p>
-                          <h3 className="mb-0 text-lg text-text">Completed albums</h3>
+                {backlogPreview.length === 0 ? (
+                  <p className="mb-0 text-sm text-slate-600">No completed items yet.</p>
+                ) : (
+                  <ul className="divide-y divide-[var(--border)]">
+                    {backlogPreview.map((item) => (
+                      <li key={item.id} className="flex items-center gap-3 py-2.5">
+                        <div className="h-12 w-12 overflow-hidden border border-black/10 bg-black/5">
+                          <CoverImage
+                            src={item.coverArtUrl || '/album/am.jpg'}
+                            alt={`${item.albumTitleRaw} by ${item.artistNameRaw} cover`}
+                            className="h-full w-full"
+                          />
                         </div>
-                      </div>
-                      {backlogPreview.length === 0 ? (
-                        <p className="mb-0 text-sm text-slate-600">No completed items yet.</p>
-                      ) : (
-                        <ul className="divide-y divide-black/5">
-                          {backlogPreview.map((item) => (
-                            <li key={item.id} className="flex items-center gap-3 py-2.5">
-                              <div className="h-12 w-12 overflow-hidden border border-black/10 bg-black/5">
-                                <CoverImage
-                                  src={item.coverArtUrl || '/album/am.jpg'}
-                                  alt={`${item.albumTitleRaw} by ${item.artistNameRaw} cover`}
-                                  className="h-full w-full"
-                                />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="mb-0 truncate text-sm font-semibold text-text">
-                                  {item.albumTitleRaw}
-                                </p>
-                                <p className="mb-0 truncate text-xs text-slate-600">
-                                  {item.artistNameRaw}
-                                </p>
-                              </div>
-                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
-                                {item.rating}/5
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-
-                    <LatestLogsSection recent={recent} asCard={false} />
-                    <LastFmRecentTracks
-                      username={payload?.user?.username ?? ''}
-                      tracks={recentTracks}
-                      isLoading={recentlyListenedLoading}
-                      error={recentlyListenedError}
-                      asCard={false}
-                    />
-                  </aside>
-                </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="mb-0 truncate text-sm font-semibold text-text">
+                            {item.albumTitleRaw}
+                          </p>
+                          <p className="mb-0 truncate text-xs text-slate-600">
+                            {item.artistNameRaw}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+                          {item.rating}/5
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
 
-              <section className="px-6 py-6 sm:px-8">
-                <RecentActivitySection
-                  activity={friendActivityRows}
-                  isLoading={isFriendActivityLoading}
-                  error={friendActivityError}
-                  emptyMessage={
-                    hasFriends
-                      ? 'No friend activity yet.'
-                      : 'No friend activity yet. Add friends to see their music activity.'
-                  }
+              <div className="hidden md:block">
+                <LatestLogsSection recent={recent} asCard={false} />
+              </div>
+              <div className="hidden md:block">
+                <LastFmRecentTracks
+                  username={payload?.user?.username ?? ''}
+                  tracks={recentTracks}
+                  isLoading={recentlyListenedLoading}
+                  error={recentlyListenedError}
+                  asCard={false}
                 />
-              </section>
+              </div>
+            </aside>
+          </div>
+        </section>
 
-              <section className="px-6 py-6 sm:px-8">
-                <ProfileCTA asCard={false} />
-              </section>
-            </div>
-          </main>
-        </div>
+        <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+          <MobileSocialSection
+            friends={[]}
+            activity={friendActivityRows}
+            isActivityLoading={isFriendActivityLoading}
+            activityError={friendActivityError}
+            hasFriends={hasFriends}
+            emptyActivityMessage="No friend activity yet. Add friends to see their music activity."
+          />
+          <div className="hidden md:block">
+            <RecentActivitySection
+              activity={friendActivityRows}
+              isLoading={isFriendActivityLoading}
+              error={friendActivityError}
+              emptyMessage={
+                hasFriends
+                  ? 'No friend activity yet.'
+                  : 'No friend activity yet. Add friends to see their music activity.'
+              }
+            />
+          </div>
+        </section>
+
+        <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+          <ProfileCTA asCard={false} compactMobile />
+        </section>
       </div>
-    </div>
+    </main>,
   )
 }

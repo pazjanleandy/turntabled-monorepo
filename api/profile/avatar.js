@@ -81,6 +81,24 @@ async function persistAvatarPathForUser(supabase, userId, avatarPath) {
   }
 }
 
+async function persistAvatarUrlForUser(supabase, userId, avatarUrl) {
+  const { error } = await supabase
+    .from("users")
+    .update({
+      avatar_url: avatarUrl,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId);
+
+  if (error) {
+    throw new InfrastructureError("Failed to save avatar URL.", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+    });
+  }
+}
+
 export default async function handler(req, res) {
   const requestId = getRequestId(req);
 
@@ -112,13 +130,17 @@ export default async function handler(req, res) {
 
     await persistAvatarPathForUser(supabase, userId, avatarPath);
     const { data: urlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(avatarPath);
+    const avatarUrl = urlData?.publicUrl ?? null;
+    if (avatarUrl) {
+      await persistAvatarUrlForUser(supabase, userId, avatarUrl);
+    }
 
     sendJson(
       res,
       200,
       {
         avatarPath,
-        avatarUrl: urlData?.publicUrl ?? null,
+        avatarUrl,
       },
       requestId
     );

@@ -3,7 +3,7 @@ export default function ArtistSectionHeader({ label, sticky = false, className =
     <div
       className={[
         'mb-3 flex items-center gap-3',
-        sticky ? 'sticky top-16 z-10 py-1 lg:top-3' : '',
+        sticky ? 'md:sticky md:top-16 md:z-10 md:py-1 lg:top-3' : '',
         className,
       ].join(' ')}
     >

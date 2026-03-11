@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Compass, House, MusicNotes, SignIn } from 'phosphor-react'
+import { Compass, House, ListBullets, MusicNotes, SignIn } from 'phosphor-react'
 import SignInModal from './auth/SignInModal.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 
@@ -63,6 +63,10 @@ export default function NavbarGuest({ className = '' }) {
           <NavLink to="/artists" className={navItemClass}>
             <MusicNotes size={14} weight="bold" className="transition" />
             Artists
+          </NavLink>
+          <NavLink to="/lists" className={navItemClass}>
+            <ListBullets size={14} weight="bold" className="transition" />
+            Lists
           </NavLink>
         </div>
         <button

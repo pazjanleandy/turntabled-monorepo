@@ -95,12 +95,14 @@ function mapItem(row) {
   const albumArtistName = row?.album?.artist?.name ?? null;
   const albumReleaseDate = row?.album?.release_date ?? null;
   const albumPrimaryType = row?.album?.primary_type ?? null;
+  const statusRaw = typeof row?.status === "string" ? row.status.trim().toLowerCase() : "";
 
   return {
     id: row.id,
     albumId: row.album_id,
     artistNameRaw: row.artist_name_raw,
     albumTitleRaw: row.album_title_raw,
+    statusRaw,
     status: normalizeStatusForRead(row.status),
     rating: row.rating,
     isFavorite: Boolean(row.is_favorite),

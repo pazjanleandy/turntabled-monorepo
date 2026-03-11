@@ -166,7 +166,7 @@ function mapCompleted(row) {
   };
 }
 
-const PUBLIC_BACKLOG_STATUSES = new Set(["backloggd", "pending", "listening", "unfinished"]);
+const PUBLIC_BACKLOG_STATUSES = new Set(["backloggd"]);
 
 function toTimestamp(value) {
   const parsed = Date.parse(value ?? "");
@@ -235,7 +235,7 @@ function buildListeningStats(rows = []) {
   };
 }
 
-function mapProfile(user, favorites, reviews) {
+function mapProfile(user, profileMedia, favorites, reviews, social = {}, supabaseUrl) {
   return {
     user: {
       id: user.id,
@@ -243,16 +243,29 @@ function mapProfile(user, favorites, reviews) {
       email: user.email ?? null,
       fullName: user.full_name ?? null,
       bio: user.bio ?? null,
-      avatarUrl: user.avatar_url ?? null,
+      avatarUrl: resolvePublicAvatarUrl(user.avatar_url, profileMedia?.avatar_path, supabaseUrl),
       lastfmUsername: user.lastfm_username ?? null,
       lastfmConnectedAt: user.lastfm_connected_at ?? null,
+    },
+    social: {
+      followers: Number.isFinite(Number(social?.followers)) ? Number(social.followers) : 0,
+      following: Number.isFinite(Number(social?.following)) ? Number(social.following) : 0,
     },
     favorites: favorites.map((item) => mapFavorite(item)),
     reviews: reviews.map((item) => mapReview(item)),
   };
 }
 
-function mapPublicProfile(user, profileMedia, favorites, completed, reviews, stats, supabaseUrl) {
+function mapPublicProfile(
+  user,
+  profileMedia,
+  favorites,
+  completed,
+  reviews,
+  stats,
+  social = {},
+  supabaseUrl
+) {
   return {
     user: {
       id: user.id,
@@ -261,6 +274,10 @@ function mapPublicProfile(user, profileMedia, favorites, completed, reviews, sta
       lastfmUsername: user.lastfm_username ?? null,
       avatarUrl: resolvePublicAvatarUrl(user.avatar_url, profileMedia?.avatar_path, supabaseUrl),
       coverUrl: profileMedia?.cover_url ?? null,
+    },
+    social: {
+      followers: Number.isFinite(Number(social?.followers)) ? Number(social.followers) : 0,
+      following: Number.isFinite(Number(social?.following)) ? Number(social.following) : 0,
     },
     favorites: favorites.map((item) => mapFavorite(item)),
     completed: completed.map((item) => mapCompleted(item)),
@@ -281,11 +298,17 @@ export class ProfileService {
       throw new ValidationError("Profile not found.");
     }
 
-    const [favorites, reviews] = await Promise.all([
+    const [profileMedia, favorites, reviews, followerCount, followingCount] = await Promise.all([
+      this.profileRepository.findProfileMediaByUserId(userId),
       this.profileRepository.listFavoritesByUser(userId),
       this.profileRepository.listReviewsByUser(userId),
+      this.profileRepository.countFollowersByUser(userId),
+      this.profileRepository.countFollowingByUser(userId),
     ]);
-    return mapProfile(user, favorites, reviews);
+    return mapProfile(user, profileMedia, favorites, reviews, {
+      followers: followerCount,
+      following: followingCount,
+    }, this.supabaseUrl);
   }
 
   async getPublicProfileForTarget(authenticatedUserId, target) {
@@ -314,12 +337,22 @@ export class ProfileService {
       throw new ValidationError("Use /api/profile to fetch the authenticated user's profile.");
     }
 
-    const [profileMedia, favorites, completed, reviews, statRows] = await Promise.all([
+    const [
+      profileMedia,
+      favorites,
+      completed,
+      reviews,
+      statRows,
+      followerCount,
+      followingCount,
+    ] = await Promise.all([
       this.profileRepository.findProfileMediaByUserId(user.id),
       this.profileRepository.listFavoritesByUser(user.id),
       this.profileRepository.listCompletedByUser(user.id),
       this.profileRepository.listReviewsByUser(user.id),
       this.profileRepository.listBacklogRowsForStats(user.id),
+      this.profileRepository.countFollowersByUser(user.id),
+      this.profileRepository.countFollowingByUser(user.id),
     ]);
 
     const stats = buildListeningStats(statRows);
@@ -330,6 +363,10 @@ export class ProfileService {
       completed,
       reviews,
       stats,
+      {
+        followers: followerCount,
+        following: followingCount,
+      },
       this.supabaseUrl
     );
   }

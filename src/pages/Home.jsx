@@ -1,15 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import PopularAlbumsSection from '../components/PopularAlbumsSection.jsx'
 import StatsPanel from '../components/StatsPanel.jsx'
 import RecentlyListenedSection from '../components/RecentlyListenedSection.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
+import TrendingReviewsSection from '../components/TrendingReviewsSection.jsx'
+import BecauseCommunityLovesSection from '../components/BecauseCommunityLovesSection.jsx'
 import Footer from '../components/Footer.jsx'
-import { ChatCircle, Headphones, Heart, PlusCircle } from 'phosphor-react'
+import { Headphones, PlusCircle } from 'phosphor-react'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import useFriendActivity from '../hooks/useFriendActivity.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+import { mapFriendActivityFeed } from '../lib/friendActivityFeed.jsx'
+import {
+  PROFILE_EVENT_NAME,
+  emitProfileUpdated,
+  fetchCurrentProfile,
+  readCachedProfile,
+} from '../lib/profileClient.js'
+import HomeMobileHeader from '../components/home/HomeMobileHeader.jsx'
+import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import HomeMobilePopularSection from '../components/home/HomeMobilePopularSection.jsx'
+import HomeMobileTrendingSection from '../components/home/HomeMobileTrendingSection.jsx'
+import HomeMobileStatsSection from '../components/home/HomeMobileStatsSection.jsx'
+import HomeMobileRecentlyListenedSection from '../components/home/HomeMobileRecentlyListenedSection.jsx'
+import HomeMobileFriendActivitySection from '../components/home/HomeMobileFriendActivitySection.jsx'
 
 const LOG_STATUSES = new Set(['listened'])
 const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'backloggd'])
@@ -24,6 +40,68 @@ function pickLastFmCoverArt(images = []) {
     if (url) return url
   }
   return ''
+}
+
+function collapseConsecutiveRecentlyListened(items = []) {
+  const rows = Array.isArray(items) ? items : []
+  const result = []
+  let previousKey = ''
+
+  for (const item of rows) {
+    const album = normalizeRecentKeyPart(item?.album)
+    const artist = normalizeRecentKeyPart(item?.artist)
+    const key = `${artist}::${album}`
+
+    if (result.length > 0 && key && key === previousKey) {
+      continue
+    }
+
+    result.push(item)
+    previousKey = key
+  }
+
+  return result
+}
+
+function normalizeRecentKeyPart(value) {
+  if (typeof value !== 'string') return ''
+  return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function mapFriendListeningRows(items = []) {
+  const rows = Array.isArray(items) ? items : []
+  const directListenRows = rows.filter((item) => item?.type === 'log')
+  const fallbackRows = rows.filter((item) => item?.type !== 'log')
+  const candidateRows = directListenRows.length >= 6 ? directListenRows : [...directListenRows, ...fallbackRows]
+  const seenKeys = new Set()
+  const result = []
+
+  for (const item of candidateRows) {
+    const userId = item?.user?.id || item?.userId || item?.user?.username || 'friend'
+    const album = item?.albumTitle || 'Unknown album'
+    const artist = item?.artistName || 'Unknown artist'
+    const key = `${userId}::${normalizeRecentKeyPart(artist)}::${normalizeRecentKeyPart(album)}`
+
+    if (seenKeys.has(key)) continue
+    seenKeys.add(key)
+
+    result.push({
+      id: item?.id ?? key,
+      username: item?.user?.username || 'Unknown user',
+      avatarUrl: item?.user?.avatarUrl || '',
+      album,
+      artist,
+      cover: item?.coverArtUrl || '/album/am.jpg',
+      addedAt: item?.addedAt || item?.updatedAt || item?.reviewedAt || null,
+      type: item?.type || 'log',
+      status: item?.status || '',
+      rating: typeof item?.rating === 'number' ? item.rating : null,
+    })
+
+    if (result.length >= 10) break
+  }
+
+  return result
 }
 
 function formatRelativeTime(value) {
@@ -67,22 +145,82 @@ function formatRelativeTime(value) {
 }
 
 export default function Home() {
-  const { isSignedIn } = useAuthStatus()
+  const navigate = useNavigate()
+  const { isSignedIn, signOut } = useAuthStatus()
   const {
     activities: friendActivities,
     isLoading: isFriendActivityLoading,
     error: friendActivityError,
     hasFriends,
   } = useFriendActivity({ isSignedIn, limit: 24 })
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [navUser, setNavUser] = useState(() => {
+    const cached = readCachedProfile()
+    return {
+      username: cached?.username || '',
+      avatarUrl: cached?.avatarUrl || '',
+    }
+  })
   const [search, setSearch] = useState('')
   const [popularAlbums, setPopularAlbums] = useState([])
   const [isPopularLoading, setIsPopularLoading] = useState(false)
   const [popularError, setPopularError] = useState('')
+  const [trendingReviews, setTrendingReviews] = useState([])
+  const [isTrendingLoading, setIsTrendingLoading] = useState(false)
+  const [trendingError, setTrendingError] = useState('')
+  const [trendingWindowDays, setTrendingWindowDays] = useState(7)
   const [recentlyListened, setRecentlyListened] = useState([])
   const [backlogStats, setBacklogStats] = useState({ listened: 0, backlog: 0, logs: 0 })
   const [userActivity, setUserActivity] = useState([])
   const [isRecentLoading, setIsRecentLoading] = useState(false)
   const [recentError, setRecentError] = useState('')
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setNavUser({ username: '', avatarUrl: '' })
+      return
+    }
+
+    let cancelled = false
+
+    async function loadNavUser() {
+      try {
+        const profile = await fetchCurrentProfile()
+        if (!cancelled) {
+          emitProfileUpdated(profile)
+          setNavUser({ username: profile.username || '', avatarUrl: profile.avatarUrl || '' })
+        }
+      } catch {
+        // Keep cached value on failure.
+      }
+    }
+
+    const handleProfileUpdate = (event) => {
+      const profile = event?.detail
+      if (!profile) return
+      setNavUser({
+        username: profile.username || '',
+        avatarUrl: profile.avatarUrl || '',
+      })
+    }
+
+    window.addEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
+    loadNavUser()
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(PROFILE_EVENT_NAME, handleProfileUpdate)
+    }
+  }, [isSignedIn])
+
+  useEffect(() => {
+    if (!isSidebarOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isSidebarOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -122,6 +260,50 @@ export default function Home() {
     }
 
     loadPopularAlbums()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
+    async function loadTrendingReviews() {
+      setIsTrendingLoading(true)
+      setTrendingError('')
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const response = await fetch(`${apiBase}/api/explore/trending-reviews?limit=4`, {
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(payload?.error?.message ?? 'Failed to load trending reviews.')
+        }
+
+        if (!cancelled) {
+          setTrendingReviews(Array.isArray(payload?.items) ? payload.items : [])
+          setTrendingWindowDays(Number(payload?.windowDays ?? 7) || 7)
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        if (!cancelled) {
+          setTrendingReviews([])
+          setTrendingError(error?.message ?? 'Unable to load trending reviews.')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsTrendingLoading(false)
+        }
+      }
+    }
+
+    loadTrendingReviews()
 
     return () => {
       cancelled = true
@@ -261,7 +443,7 @@ export default function Home() {
           (sum, item) => sum + (BACKLOG_STATUSES.has(item.status) ? 1 : 0),
           0,
         )
-        const activity = mapped.slice(0, 3).map((item) => {
+        const activity = mapped.slice(0, 5).map((item) => {
           const isLog = LOG_STATUSES.has(item.status)
           return {
             id: `you-${item.id}`,
@@ -277,7 +459,7 @@ export default function Home() {
         })
 
         if (!cancelled) {
-          setRecentlyListened(Array.isArray(recentMapped) ? recentMapped : [])
+          setRecentlyListened(collapseConsecutiveRecentlyListened(recentMapped))
           setBacklogStats({
             listened: mapped.length,
             backlog: backlogCount,
@@ -327,109 +509,127 @@ export default function Home() {
     [backlogStats],
   )
   const friendActivityRows = useMemo(
-    () =>
-      friendActivities.map((item) => {
-        const username = item?.user?.username || 'Unknown user'
-        if (item.type === 'review') {
-          return {
-            id: item.id,
-            icon: <ChatCircle size={16} weight="bold" />,
-            text: `${username} reviewed ${item.albumTitle}`,
-            meta: `${item.artistName} - ${formatRelativeTime(item.reviewedAt || item.addedAt)}`,
-            cover: item.coverArtUrl || '/album/am.jpg',
-          }
-        }
-        if (item.type === 'favorite') {
-          return {
-            id: item.id,
-            icon: <Heart size={16} weight="bold" />,
-            text: `${username} marked ${item.albumTitle} as favorite`,
-            meta: `${item.artistName} - ${formatRelativeTime(item.updatedAt || item.addedAt)}`,
-            cover: item.coverArtUrl || '/album/am.jpg',
-          }
-        }
-        return {
-          id: item.id,
-          icon: <Headphones size={16} weight="bold" />,
-          text:
-            typeof item.rating === 'number'
-              ? `${username} rated ${item.albumTitle} ${item.rating}/5`
-              : `${username} logged ${item.albumTitle}`,
-          meta: `${item.artistName} - ${formatRelativeTime(item.addedAt)}`,
-          cover: item.coverArtUrl || '/album/am.jpg',
-        }
-      }),
+    () => mapFriendActivityFeed(friendActivities),
+    [friendActivities],
+  )
+  const friendListeningRows = useMemo(
+    () => mapFriendListeningRows(friendActivities),
     [friendActivities],
   )
 
+  const openSidebar = () => setIsSidebarOpen(true)
+  const closeSidebar = () => setIsSidebarOpen(false)
+
+  const handleMobileSignOut = () => {
+    signOut()
+    setNavUser({ username: '', avatarUrl: '' })
+    navigate('/')
+  }
+
   return (
-    <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-        <div className="relative">
-          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
-        </div>
-        <main className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr]">
-          <div className="min-w-0 space-y-8">
-            <PopularAlbumsSection
-              albums={filteredPopular}
-              search={search}
-              onSearchChange={setSearch}
+    <div className="min-h-screen">
+      <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} />
+      <HomeMobileSidebar
+        isOpen={isSidebarOpen}
+        navUser={navUser}
+        isSignedIn={isSignedIn}
+        onClose={closeSidebar}
+        onSignOut={handleMobileSignOut}
+      />
+
+      <div className="mx-auto w-full max-w-6xl px-4 pb-10 sm:px-6 lg:px-8 lg:pb-12">
+        <div className="space-y-8 lg:space-y-10">
+          <div className="relative hidden lg:block">
+            <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+          </div>
+
+          <main className="space-y-10 pt-1 lg:hidden">
+            <HomeMobilePopularSection
+              albums={popularAlbums}
               isLoading={isPopularLoading}
               error={popularError}
             />
-            <RecentlyListenedSection
-              albums={recentlyListened}
-              isLoading={isRecentLoading}
-              error={recentError}
+            <BecauseCommunityLovesSection />
+            <HomeMobileTrendingSection
+              reviews={trendingReviews}
+              isLoading={isTrendingLoading}
+              error={trendingError}
+              windowDays={trendingWindowDays}
+            />
+            <HomeMobileStatsSection stats={stats} />
+            <HomeMobileRecentlyListenedSection
+              albums={friendListeningRows}
+              isLoading={isFriendActivityLoading}
+              error={friendActivityError}
               isSignedIn={isSignedIn}
+              hasFriends={hasFriends}
+            />
+            <HomeMobileFriendActivitySection
+              activity={friendActivityRows}
+              isLoading={isFriendActivityLoading}
+              error={friendActivityError}
+              emptyMessage={
+                hasFriends
+                  ? 'No friend activity yet.'
+                  : 'No friend activity yet. Add friends to see their music activity.'
+              }
+            />
+          </main>
+
+          <main className="hidden lg:grid lg:grid-cols-[1.62fr_0.92fr] lg:items-start lg:gap-5 xl:gap-6">
+            <section className="min-w-0">
+              <PopularAlbumsSection
+                albums={filteredPopular}
+                search={search}
+                onSearchChange={setSearch}
+                isLoading={isPopularLoading}
+                error={popularError}
+              />
+            </section>
+
+            <aside className="min-w-0 self-start">
+              <StatsPanel stats={stats} userActivity={userActivity} />
+            </aside>
+          </main>
+
+          <div className="hidden lg:block">
+            <RecentlyListenedSection
+              albums={friendListeningRows}
+              isLoading={isFriendActivityLoading}
+              error={friendActivityError}
+              isSignedIn={isSignedIn}
+              hasFriends={hasFriends}
             />
           </div>
-          <StatsPanel stats={stats} userActivity={userActivity} />
-        </main>
-        <RecentActivitySection
-          activity={friendActivityRows}
-          isLoading={isFriendActivityLoading}
-          error={friendActivityError}
-          emptyMessage={
-            hasFriends
-              ? 'No friend activity yet.'
-              : 'No friend activity yet. Add friends to see their music activity.'
-          }
-        />
-        <section className="card vinyl-texture">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-                Featured artists
-              </p>
-              <h2 className="mb-0 text-xl">Explore artist pages</h2>
+
+          <div className="hidden lg:block">
+            <div className="mx-auto w-full">
+              <BecauseCommunityLovesSection />
             </div>
-            <Link
-              to="/artist/chouchou"
-              className="rounded-xl border border-black/5 bg-white/70 px-3 py-2 text-xs font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
-            >
-              View example
-            </Link>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link className="btn-primary px-3 py-2 text-xs" to="/artist/chouchou">
-              chouchou merged syrups.
-            </Link>
-            <Link
-              className="rounded-xl border border-black/5 bg-white/70 px-3 py-2 text-xs font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
-              to="/artist/starsailor"
-            >
-              Starsailor
-            </Link>
-            <Link
-              className="rounded-xl border border-black/5 bg-white/70 px-3 py-2 text-xs font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
-              to="/artist/strokes"
-            >
-              The Strokes
-            </Link>
+
+          <div className="hidden lg:block">
+            <TrendingReviewsSection
+              reviews={trendingReviews}
+              isLoading={isTrendingLoading}
+              error={trendingError}
+              windowDays={trendingWindowDays}
+            />
           </div>
-        </section>
-        <Footer />
+          <div className="hidden lg:block">
+            <RecentActivitySection
+              activity={friendActivityRows}
+              isLoading={isFriendActivityLoading}
+              error={friendActivityError}
+              emptyMessage={
+                hasFriends
+                  ? 'No friend activity yet.'
+                  : 'No friend activity yet. Add friends to see their music activity.'
+              }
+            />
+          </div>
+          <Footer />
+        </div>
       </div>
     </div>
   )

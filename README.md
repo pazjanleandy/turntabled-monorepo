@@ -2,7 +2,7 @@
 
 Turntabled is a React + Vite + Tailwind app for album logging, artist discovery, profile management, and social connections.
 
-Last updated: March 6, 2026.
+Last updated: March 11, 2026.
 
 ## Stack
 
@@ -164,6 +164,77 @@ Why two terminals:
 Use `.env.example` as the template.
 
 ## Recent Changes We Made
+
+### Mar 11, 2026
+
+- Homepage discovery section now uses real community lists (no placeholder genres):
+  - replaced hardcoded genre/scene content in `BecauseCommunityLovesSection` with live list data from `/api/lists`
+  - featured item now comes from the highest real interaction list, with supporting items from the next ranked lists
+  - ranking now uses real engagement (`favoriteCount + commentCount`) with sensible tie-breaks
+  - section copy/labels updated for list discovery (`Most loved lists right now`, `Open list`)
+  - real metadata now shown: title, description, creator, album preview, albums/favorites/comments, publish recency
+  - added no-data empty state that encourages publishing the first list (no fake backfill)
+- Friends page mobile stability fixes:
+  - fixed broken/clipped mobile friend rows by introducing dedicated mobile row components
+  - removed leftover visual fragments and decorative artifacts from mobile friend entries
+  - restored clean mobile container/padding/overflow behavior for friend and search rows
+  - kept desktop/tablet list/grid behavior intact
+- Friend profile mobile parity:
+  - aligned `/friends/:friendSlug` mobile structure with the main profile mobile layout
+  - added mobile header/sidebar shell consistency and section rhythm parity
+  - ensured social/media sections render with the same mobile hierarchy as `/profile`
+
+### Mar 10, 2026
+
+- Lists page major desktop polish pass:
+  - refined hierarchy and spacing for page header, controls, featured area, and published feed
+  - replaced clunky chip-heavy controls with cleaner sort/filter/search composition
+  - improved featured + spotlight composition and internal alignment
+  - reworked published list rows for better editorial balance and scanability
+  - improved album collage treatment and removed awkward strip-like crop behavior
+- Lists page color/state cleanup (light and dark mode):
+  - normalized selected/unselected filter behavior (orange selected state only)
+  - fixed inconsistent dark-mode text/icon color issues in lists surfaces and controls
+  - removed unnecessary outlines/containers and reduced visual clutter
+- Engagement/action presentation updates:
+  - replaced boxed favorite/comment actions with cleaner icon-first treatment
+  - removed awkward `0 favorites` / `0 comments` metadata where it hurt scanability
+  - increased icon legibility and integrated counters more naturally into rows
+- List detail modal (desktop) refactor:
+  - strengthened hero/header structure with clearer list identity and metadata
+  - improved ranked album rows to feel curated instead of admin-table-like
+  - refined discussion/composer section and close control treatment
+  - moved primary actions to more natural positions
+  - added owner-only edit/delete actions for own lists
+- List editing/publishing workflow improvements:
+  - added add-albums and reorder support during edit mode
+  - improved modal state consistency across view/edit/add/reorder/publish flows
+  - mobile-only publish modal and list flow were refactored for touch-first hierarchy, spacing, and action bars
+- Social integration hardening for lists:
+  - fixed list favorite/comment failures and ensured both mobile and desktop integration paths work
+  - heart icon now renders orange when a list is favorited
+  - ensured profile avatars display consistently in comments and list surfaces on both mobile and desktop
+
+### Mar 9, 2026
+
+- Global theming + dark mode rollout:
+  - added app-wide dark mode styling across layouts, cards, forms, nav, dropdowns, and detail views
+  - dark mode toggle moved into profile hover/dropdown menu
+  - theme preference now persists via client storage and restores on reload
+- Home/feed improvements:
+  - mobile home redesigned with compact header/sidebar patterns and stronger section hierarchy
+  - recently listened no longer shows consecutive duplicate album entries
+  - fixed long album-title overflow so card titles do not overlap neighboring cards
+- Navigation + sidebar refinements:
+  - mobile nav/header and drawer hierarchy/padding simplified for cleaner phone UX
+  - menu icon treatments and selected/unselected color states tuned for light/dark consistency
+- Mobile-only page refactors (desktop preserved where requested):
+  - Explore / album catalog controls, filters, and grid rhythm tightened for phone browsing
+  - Logged albums, Artists directory, Album detail, Artist detail, and Auth/login mobile layouts polished
+  - back button treatments and heavy stacked-card patterns reduced across mobile flows
+- Landing/desktop polish:
+  - refined hero-to-content flow and atmospheric fade transition to remove hard visual seams
+  - adjusted card/surface balance to keep hero dominance and improve compositional continuity
 
 ### Mar 6, 2026
 

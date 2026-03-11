@@ -102,6 +102,46 @@ export class BacklogRepository {
     return data ?? [];
   }
 
+  async listRecentReviews({ since = null, limit = 50 } = {}) {
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 200) : 50;
+
+    let query = this.supabase
+      .from("backlog")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,rating,review_text,reviewed_at,added_at,updated_at"
+      )
+      .not("review_text", "is", null)
+      .order("reviewed_at", { ascending: false, nullsFirst: false })
+      .order("updated_at", { ascending: false })
+      .limit(safeLimit);
+
+    if (typeof since === "string" && since.trim()) {
+      query = query.gte("reviewed_at", since.trim());
+    }
+
+    const { data, error } = await query;
+    handleDbError(error, "fetching recent reviews");
+    return data ?? [];
+  }
+
+  async listReviewsByIds(backlogIds) {
+    const ids = Array.isArray(backlogIds)
+      ? backlogIds.filter((value) => typeof value === "string" && value.trim())
+      : [];
+    if (ids.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select(
+        "id,user_id,album_id,artist_name_raw,album_title_raw,rating,review_text,reviewed_at,added_at,updated_at"
+      )
+      .in("id", ids)
+      .not("review_text", "is", null);
+
+    handleDbError(error, "fetching reviews by ids");
+    return data ?? [];
+  }
+
   async listReviewLikesForBacklogIds(backlogIds) {
     const ids = Array.isArray(backlogIds)
       ? backlogIds.filter((value) => typeof value === "string" && value.trim())
@@ -110,7 +150,7 @@ export class BacklogRepository {
 
     const { data, error } = await this.supabase
       .from("review_likes")
-      .select("backlog_id,user_id")
+      .select("backlog_id,user_id,created_at")
       .in("backlog_id", ids);
 
     handleDbError(error, "fetching review likes");
@@ -132,6 +172,42 @@ export class BacklogRepository {
       .limit(safeLimit);
 
     handleDbError(error, "fetching review comments");
+    return data ?? [];
+  }
+
+  async listRecentReviewLikes({ since = null, limit = 500 } = {}) {
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 2000) : 500;
+
+    let query = this.supabase
+      .from("review_likes")
+      .select("backlog_id,user_id,created_at")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+
+    if (typeof since === "string" && since.trim()) {
+      query = query.gte("created_at", since.trim());
+    }
+
+    const { data, error } = await query;
+    handleDbError(error, "fetching recent review likes");
+    return data ?? [];
+  }
+
+  async listRecentReviewComments({ since = null, limit = 500 } = {}) {
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 2000) : 500;
+
+    let query = this.supabase
+      .from("review_comments")
+      .select("id,backlog_id,user_id,comment_text,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+
+    if (typeof since === "string" && since.trim()) {
+      query = query.gte("created_at", since.trim());
+    }
+
+    const { data, error } = await query;
+    handleDbError(error, "fetching recent review comments");
     return data ?? [];
   }
 }

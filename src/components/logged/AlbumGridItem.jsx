@@ -90,8 +90,8 @@ export default function AlbumGridItem({
     onRemove?.(item)
   }
 
-  const tileSpacing = density === 'compact' ? 'space-y-1' : 'space-y-1.5'
-  const metaTextSize = density === 'compact' ? 'text-[10px]' : 'text-[11px]'
+  const tileSpacing = density === 'compact' ? 'space-y-1' : 'space-y-1 md:space-y-1.5'
+  const metaTextSize = density === 'compact' ? 'text-[10px] md:text-[10px]' : 'text-[10px] md:text-[11px]'
 
   return (
     <article className={tileSpacing}>
@@ -121,7 +121,7 @@ export default function AlbumGridItem({
         <div ref={menuRootRef} className="absolute right-2 top-2 z-20">
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/15 bg-white/90 text-xs font-bold leading-none text-text shadow-subtle transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 opacity-100 sm:opacity-0 sm:group-hover/tile:opacity-100 sm:group-focus-within/tile:opacity-100"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-black/10 bg-white/82 p-0 text-[10px] font-bold leading-none text-text shadow-subtle transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 md:h-8 md:w-8 md:rounded-full md:border-black/15 md:bg-white/90 md:text-xs opacity-100 sm:opacity-0 sm:group-hover/tile:opacity-100 sm:group-focus-within/tile:opacity-100"
             onClick={() => setIsMenuOpen((open) => !open)}
             aria-haspopup="menu"
             aria-expanded={isMenuOpen}
@@ -133,7 +133,7 @@ export default function AlbumGridItem({
 
           {isMenuOpen ? (
             <div
-              className="absolute right-0 mt-2 w-40 rounded-xl border border-black/10 bg-white/95 p-1.5 shadow-lg"
+              className="absolute right-0 mt-2 w-36 rounded-xl border border-black/10 bg-white/95 p-1.5 shadow-lg md:w-40"
               role="menu"
             >
               {detailHref ? (
@@ -180,19 +180,24 @@ export default function AlbumGridItem({
       </div>
 
       <div
-        className={`flex items-center justify-between text-muted ${metaTextSize} font-semibold uppercase tracking-[0.12em]`}
+        className={`flex items-center justify-between text-muted ${metaTextSize} font-semibold tracking-[0.06em] md:uppercase md:tracking-[0.12em]`}
       >
-        <span className="inline-flex items-center gap-1 text-text">
+        <span className="inline-flex items-center gap-1.5 text-text">
           <span
             className={`h-2 w-2 rounded-full ${statusMeta.dotClass}`}
             title={`Status: ${statusMeta.label}`}
             aria-hidden="true"
           />
           <span className="sr-only">{`Status: ${statusMeta.label}`}</span>
-          <Star size={12} weight="fill" className="text-amber-500" />
+          <span className="text-[9px] font-semibold uppercase tracking-[0.11em] text-muted md:hidden">
+            {statusMeta.label}
+          </span>
+          <Star size={12} weight="fill" className="text-accent" />
           {formatRating(item?.rating)}
         </span>
-        <span>{formatLoggedDate(loggedAt)}</span>
+        <span className="text-[10px] uppercase tracking-[0.1em] md:text-inherit md:tracking-[0.12em]">
+          {formatLoggedDate(loggedAt)}
+        </span>
       </div>
     </article>
   )

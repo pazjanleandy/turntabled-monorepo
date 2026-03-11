@@ -50,6 +50,81 @@ function resolvePublicAvatarUrl(userAvatarUrl, profileAvatarPath, supabaseUrl) {
   return null;
 }
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const TRENDING_DEFAULT_LIMIT = 4;
+const TRENDING_MAX_LIMIT = 12;
+const TRENDING_INTERACTION_WINDOW_DAYS = 7;
+const TRENDING_REVIEW_WINDOW_DAYS = 30;
+
+function getTimestampMs(value) {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getIsoDaysAgo(days) {
+  const safeDays = Number.isFinite(Number(days)) ? Math.max(0, Number(days)) : 0;
+  return new Date(Date.now() - safeDays * DAY_IN_MS).toISOString();
+}
+
+function getLatestTimestampValue(...values) {
+  let bestValue = null;
+  let bestMs = 0;
+
+  for (const value of values) {
+    const ms = getTimestampMs(value);
+    if (ms > bestMs) {
+      bestMs = ms;
+      bestValue = value;
+    }
+  }
+
+  return bestValue;
+}
+
+function clampPositiveInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function buildReviewPreview(reviewText, maxLength = 220) {
+  const normalized =
+    typeof reviewText === "string" ? reviewText.replace(/\s+/g, " ").trim() : "";
+  if (!normalized) return "";
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
+function calculateTrendingReviewScore({
+  likeCount = 0,
+  commentCount = 0,
+  recentLikeCount = 0,
+  recentCommentCount = 0,
+  interactionCount = 0,
+  latestActivityAt = null,
+}) {
+  const latestActivityMs = getTimestampMs(latestActivityAt);
+  const ageDays =
+    latestActivityMs > 0 ? Math.max(0, (Date.now() - latestActivityMs) / DAY_IN_MS) : 30;
+
+  let freshnessBonus = 0;
+  if (ageDays <= 1) freshnessBonus = 5;
+  else if (ageDays <= 3) freshnessBonus = 3.5;
+  else if (ageDays <= 7) freshnessBonus = 2;
+  else if (ageDays <= 14) freshnessBonus = 0.75;
+
+  const score =
+    recentLikeCount * 4 +
+    recentCommentCount * 6 +
+    likeCount * 1.5 +
+    commentCount * 2.5 +
+    interactionCount * 0.75 +
+    freshnessBonus;
+
+  return Number(score.toFixed(3));
+}
+
 export class ExploreService {
   constructor({
     backlogRepository,
@@ -138,6 +213,421 @@ export class ExploreService {
       limit,
       scope: "popular-albums",
       rankedBy: ["logCount:desc", "averageRating:desc"],
+      items,
+    };
+  }
+
+  async getTrendingReviews(limit = TRENDING_DEFAULT_LIMIT, options = {}) {
+    const safeLimit = clampPositiveInt(limit, TRENDING_DEFAULT_LIMIT, 1, TRENDING_MAX_LIMIT);
+    const interactionWindowDays = clampPositiveInt(
+      options?.interactionWindowDays,
+      TRENDING_INTERACTION_WINDOW_DAYS,
+      1,
+      30
+    );
+    const reviewWindowDays = clampPositiveInt(
+      options?.reviewWindowDays,
+      TRENDING_REVIEW_WINDOW_DAYS,
+      interactionWindowDays,
+      120
+    );
+    const recentSinceIso = getIsoDaysAgo(interactionWindowDays);
+    const recentReviewSinceIso = getIsoDaysAgo(reviewWindowDays);
+    const recentSinceMs = getTimestampMs(recentSinceIso);
+    const candidatePoolLimit = Math.max(safeLimit * 12, 36);
+    const supplementalReviewLimit = Math.max(safeLimit * 8, 24);
+
+    const [recentReviews, recentLikeRows, recentCommentRows] = await Promise.all([
+      this.backlogRepository.listRecentReviews({
+        since: recentReviewSinceIso,
+        limit: Math.max(candidatePoolLimit, supplementalReviewLimit),
+      }),
+      this.backlogRepository.listRecentReviewLikes({
+        since: recentSinceIso,
+        limit: Math.max(candidatePoolLimit * 8, 240),
+      }),
+      this.backlogRepository.listRecentReviewComments({
+        since: recentSinceIso,
+        limit: Math.max(candidatePoolLimit * 8, 240),
+      }),
+    ]);
+
+    const recentReviewRows = Array.isArray(recentReviews)
+      ? recentReviews.filter((row) => typeof row?.review_text === "string" && row.review_text.trim())
+      : [];
+    const recentLikeEntries = Array.isArray(recentLikeRows) ? recentLikeRows : [];
+    const recentCommentEntries = Array.isArray(recentCommentRows) ? recentCommentRows : [];
+
+    const seededReviewsById = new Map();
+    const candidateMetaById = new Map();
+
+    const getCandidateMeta = (backlogId) => {
+      if (typeof backlogId !== "string" || !backlogId.trim()) return null;
+      let entry = candidateMetaById.get(backlogId);
+      if (!entry) {
+        entry = {
+          recentLikeUserIds: new Set(),
+          recentCommentCount: 0,
+          recentReviewAtMs: 0,
+          latestActivityMs: 0,
+        };
+        candidateMetaById.set(backlogId, entry);
+      }
+      return entry;
+    };
+
+    for (const row of recentReviewRows) {
+      const backlogId = row?.id;
+      const entry = getCandidateMeta(backlogId);
+      if (!entry) continue;
+
+      const reviewActivityMs = Math.max(
+        getTimestampMs(row?.reviewed_at),
+        getTimestampMs(row?.updated_at),
+        getTimestampMs(row?.added_at)
+      );
+      entry.recentReviewAtMs = Math.max(entry.recentReviewAtMs, reviewActivityMs);
+      entry.latestActivityMs = Math.max(entry.latestActivityMs, reviewActivityMs);
+      seededReviewsById.set(backlogId, row);
+    }
+
+    for (const row of recentLikeEntries) {
+      const backlogId = row?.backlog_id;
+      const entry = getCandidateMeta(backlogId);
+      const userId = row?.user_id;
+      if (!entry || typeof userId !== "string" || !userId.trim()) continue;
+
+      entry.recentLikeUserIds.add(userId);
+      entry.latestActivityMs = Math.max(entry.latestActivityMs, getTimestampMs(row?.created_at));
+    }
+
+    for (const row of recentCommentEntries) {
+      const backlogId = row?.backlog_id;
+      const entry = getCandidateMeta(backlogId);
+      if (!entry) continue;
+
+      entry.recentCommentCount += 1;
+      entry.latestActivityMs = Math.max(
+        entry.latestActivityMs,
+        getTimestampMs(row?.updated_at),
+        getTimestampMs(row?.created_at)
+      );
+    }
+
+    let rankedCandidateIds = Array.from(candidateMetaById.entries())
+      .map(([backlogId, meta]) => {
+        const recentLikeCount = meta.recentLikeUserIds.size;
+        const recentCommentCount = meta.recentCommentCount;
+        const recentInteractionCount = recentLikeCount + recentCommentCount;
+        const preliminaryScore =
+          recentLikeCount * 4 +
+          recentCommentCount * 6 +
+          recentInteractionCount * 0.75 +
+          (meta.recentReviewAtMs > 0 ? 2 : 0);
+
+        return {
+          backlogId,
+          preliminaryScore,
+          latestActivityMs: meta.latestActivityMs,
+        };
+      })
+      .sort((a, b) => {
+        if (b.preliminaryScore !== a.preliminaryScore) {
+          return b.preliminaryScore - a.preliminaryScore;
+        }
+        return b.latestActivityMs - a.latestActivityMs;
+      })
+      .slice(0, candidatePoolLimit)
+      .map((item) => item.backlogId);
+
+    if (rankedCandidateIds.length < candidatePoolLimit) {
+      const supplementalReviews = await this.backlogRepository.listRecentReviews({
+        limit: supplementalReviewLimit,
+      });
+
+      for (const row of Array.isArray(supplementalReviews) ? supplementalReviews : []) {
+        if (typeof row?.review_text !== "string" || !row.review_text.trim()) continue;
+        if (typeof row?.id !== "string" || !row.id.trim()) continue;
+        if (seededReviewsById.has(row.id)) continue;
+
+        seededReviewsById.set(row.id, row);
+        rankedCandidateIds.push(row.id);
+        if (rankedCandidateIds.length >= candidatePoolLimit) break;
+      }
+    }
+
+    rankedCandidateIds = [...new Set(rankedCandidateIds)].slice(0, candidatePoolLimit);
+    if (rankedCandidateIds.length === 0) {
+      return {
+        scope: "trending-reviews",
+        limit: safeLimit,
+        windowDays: interactionWindowDays,
+        reviewWindowDays,
+        rankedBy: [
+          "recentCommentCount:desc",
+          "recentLikeCount:desc",
+          "interactionCount:desc",
+          "latestActivityAt:desc",
+        ],
+        items: [],
+      };
+    }
+
+    const missingReviewIds = rankedCandidateIds.filter((backlogId) => !seededReviewsById.has(backlogId));
+    if (missingReviewIds.length > 0) {
+      const missingReviewRows = await this.backlogRepository.listReviewsByIds(missingReviewIds);
+      for (const row of Array.isArray(missingReviewRows) ? missingReviewRows : []) {
+        if (typeof row?.review_text !== "string" || !row.review_text.trim()) continue;
+        if (typeof row?.id !== "string" || !row.id.trim()) continue;
+        seededReviewsById.set(row.id, row);
+      }
+    }
+
+    const reviewRows = rankedCandidateIds
+      .map((backlogId) => seededReviewsById.get(backlogId))
+      .filter((row) => typeof row?.id === "string" && row.id.trim());
+
+    const reviewIds = reviewRows.map((row) => row.id);
+    if (reviewIds.length === 0) {
+      return {
+        scope: "trending-reviews",
+        limit: safeLimit,
+        windowDays: interactionWindowDays,
+        reviewWindowDays,
+        rankedBy: [
+          "recentCommentCount:desc",
+          "recentLikeCount:desc",
+          "interactionCount:desc",
+          "latestActivityAt:desc",
+        ],
+        items: [],
+      };
+    }
+
+    const [likeRows, commentRows] = await Promise.all([
+      this.backlogRepository.listReviewLikesForBacklogIds(reviewIds),
+      this.backlogRepository.listReviewCommentsForBacklogIds(reviewIds, candidatePoolLimit * 50),
+    ]);
+
+    const likesByBacklogId = new Map();
+    for (const row of Array.isArray(likeRows) ? likeRows : []) {
+      const backlogId = row?.backlog_id;
+      const userId = row?.user_id;
+      if (typeof backlogId !== "string" || !backlogId.trim()) continue;
+      if (typeof userId !== "string" || !userId.trim()) continue;
+
+      let entry = likesByBacklogId.get(backlogId);
+      if (!entry) {
+        entry = {
+          userIds: new Set(),
+          recentUserIds: new Set(),
+          latestActivityAt: null,
+        };
+        likesByBacklogId.set(backlogId, entry);
+      }
+
+      entry.userIds.add(userId);
+      const createdAt = row?.created_at ?? null;
+      if (getTimestampMs(createdAt) >= recentSinceMs) {
+        entry.recentUserIds.add(userId);
+      }
+      entry.latestActivityAt = getLatestTimestampValue(entry.latestActivityAt, createdAt);
+    }
+
+    const commentsByBacklogId = new Map();
+    for (const row of Array.isArray(commentRows) ? commentRows : []) {
+      const backlogId = row?.backlog_id;
+      if (typeof backlogId !== "string" || !backlogId.trim()) continue;
+
+      let entry = commentsByBacklogId.get(backlogId);
+      if (!entry) {
+        entry = {
+          count: 0,
+          recentCount: 0,
+          latestActivityAt: null,
+          topComments: [],
+        };
+        commentsByBacklogId.set(backlogId, entry);
+      }
+
+      entry.count += 1;
+      const activityAt = getLatestTimestampValue(row?.updated_at ?? null, row?.created_at ?? null);
+      const activityAtMs = getTimestampMs(activityAt);
+      if (getTimestampMs(activityAt) >= recentSinceMs) {
+        entry.recentCount += 1;
+      }
+      entry.latestActivityAt = getLatestTimestampValue(entry.latestActivityAt, activityAt);
+
+      const commentText =
+        typeof row?.comment_text === "string" ? row.comment_text.trim() : "";
+      const commentUserId =
+        typeof row?.user_id === "string" && row.user_id.trim() ? row.user_id.trim() : null;
+
+      if (commentText && commentUserId) {
+        entry.topComments.push({
+          id: row?.id ?? null,
+          userId: commentUserId,
+          commentText,
+          createdAt: row?.created_at ?? null,
+          updatedAt: row?.updated_at ?? null,
+          activityAtMs,
+        });
+        entry.topComments.sort((a, b) => b.activityAtMs - a.activityAtMs);
+        if (entry.topComments.length > 2) {
+          entry.topComments.length = 2;
+        }
+      }
+    }
+
+    const trendingCommentUserIds = Array.from(commentsByBacklogId.values()).flatMap((entry) =>
+      Array.isArray(entry?.topComments) ? entry.topComments.map((comment) => comment?.userId) : []
+    );
+    const userIds = [
+      ...new Set(
+        reviewRows
+          .map((row) => row?.user_id)
+          .filter((value) => typeof value === "string" && value.trim())
+          .concat(
+            trendingCommentUserIds.filter((value) => typeof value === "string" && value.trim())
+          )
+      ),
+    ];
+    const albumIds = [
+      ...new Set(
+        reviewRows
+          .map((row) => row?.album_id)
+          .filter((value) => typeof value === "string" && value.trim())
+      ),
+    ];
+
+    const [users, profileMediaRows, albums] = await Promise.all([
+      this.userRepository.findPublicByIds(userIds),
+      this.profileMediaRepository.listByUserIds(userIds),
+      this.albumRepository.findByIds(albumIds),
+    ]);
+
+    const usersById = new Map((users ?? []).map((user) => [user.id, user]));
+    const profileMediaById = new Map((profileMediaRows ?? []).map((item) => [item.id, item]));
+    const albumsById = new Map((albums ?? []).map((album) => [album.id, album]));
+
+    const items = reviewRows
+      .map((row) => {
+        const likeMeta = likesByBacklogId.get(row.id);
+        const commentMeta = commentsByBacklogId.get(row.id);
+        const likeCount = likeMeta?.userIds?.size ?? 0;
+        const commentCount = commentMeta?.count ?? 0;
+        const recentLikeCount = likeMeta?.recentUserIds?.size ?? 0;
+        const recentCommentCount = commentMeta?.recentCount ?? 0;
+        const interactionCount = likeCount + commentCount;
+        const recentInteractionCount = recentLikeCount + recentCommentCount;
+        const latestActivityAt = getLatestTimestampValue(
+          row?.reviewed_at ?? null,
+          row?.updated_at ?? null,
+          row?.added_at ?? null,
+          likeMeta?.latestActivityAt ?? null,
+          commentMeta?.latestActivityAt ?? null
+        );
+        const reviewScore = calculateTrendingReviewScore({
+          likeCount,
+          commentCount,
+          recentLikeCount,
+          recentCommentCount,
+          interactionCount,
+          latestActivityAt,
+        });
+        const album = row?.album_id ? albumsById.get(row.album_id) : null;
+        const user = usersById.get(row.user_id);
+        const profileMedia = profileMediaById.get(row.user_id);
+        const username =
+          typeof user?.username === "string" && user.username.trim() ? user.username.trim() : "unknown-user";
+        const coverArtUrl =
+          album?.cover_art_url ??
+          (album?.mbid ? `https://coverartarchive.org/release/${album.mbid}/front-500` : null);
+        const topComments = Array.isArray(commentMeta?.topComments)
+          ? commentMeta.topComments
+              .slice(0, 2)
+              .map((comment) => {
+                const commentUser = usersById.get(comment?.userId);
+                const commentProfileMedia = profileMediaById.get(comment?.userId);
+                const commentUsername =
+                  typeof commentUser?.username === "string" && commentUser.username.trim()
+                    ? commentUser.username.trim()
+                    : "unknown-user";
+
+                return {
+                  id: comment?.id ?? null,
+                  commentText: buildReviewPreview(comment?.commentText ?? "", 150),
+                  createdAt: comment?.createdAt ?? null,
+                  updatedAt: comment?.updatedAt ?? null,
+                  user: {
+                    id: comment?.userId ?? null,
+                    username: commentUsername,
+                    avatarUrl: resolvePublicAvatarUrl(
+                      commentUser?.avatar_url,
+                      commentProfileMedia?.avatar_path,
+                      this.supabaseUrl
+                    ),
+                  },
+                };
+              })
+          : [];
+
+        return {
+          backlogId: row.id,
+          rating: typeof row?.rating === "number" ? row.rating : null,
+          reviewText: row.review_text ?? "",
+          previewText: buildReviewPreview(row.review_text),
+          reviewedAt: row.reviewed_at ?? null,
+          addedAt: row.added_at ?? null,
+          updatedAt: row.updated_at ?? null,
+          latestActivityAt,
+          score: reviewScore,
+          engagement: {
+            likeCount,
+            commentCount,
+            interactionCount,
+            recentLikeCount,
+            recentCommentCount,
+            recentInteractionCount,
+          },
+          topComments,
+          album: {
+            id: album?.id ?? row?.album_id ?? null,
+            routeId: album?.id ?? row?.id ?? null,
+            title: album?.title ?? row?.album_title_raw ?? "Unknown Album",
+            artistName: album?.artist?.name ?? row?.artist_name_raw ?? "Unknown Artist",
+            coverArtUrl,
+            releaseDate: album?.release_date ?? null,
+            primaryType: album?.primary_type ?? null,
+          },
+          reviewer: {
+            id: row?.user_id ?? null,
+            username,
+            avatarUrl: resolvePublicAvatarUrl(
+              user?.avatar_url,
+              profileMedia?.avatar_path,
+              this.supabaseUrl
+            ),
+          },
+        };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return getTimestampMs(b.latestActivityAt) - getTimestampMs(a.latestActivityAt);
+      })
+      .slice(0, safeLimit);
+
+    return {
+      scope: "trending-reviews",
+      limit: safeLimit,
+      windowDays: interactionWindowDays,
+      reviewWindowDays,
+      rankedBy: [
+        "recentCommentCount:desc",
+        "recentLikeCount:desc",
+        "interactionCount:desc",
+        "latestActivityAt:desc",
+      ],
       items,
     };
   }

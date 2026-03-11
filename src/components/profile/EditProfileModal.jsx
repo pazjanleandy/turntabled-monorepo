@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'phosphor-react'
+import LastFmConnectButton from '../LastFmConnectButton.jsx'
 import AvatarResizeModal from './AvatarResizeModal.jsx'
 import BannerResizeModal from './BannerResizeModal.jsx'
 import ProfileHeaderUpload from './ProfileHeaderUpload.jsx'
@@ -18,6 +19,8 @@ export default function EditProfileModal({
   user,
   avatarSrc = '',
   bannerSrc = '/hero/hero1.jpg',
+  lastfmUsername = '',
+  onDisconnectLastFm = null,
   onClose,
   onSaved,
 }) {
@@ -351,6 +354,50 @@ export default function EditProfileModal({
                 className="w-full resize-none rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-text shadow-[0_10px_20px_-18px_rgba(15,15,15,0.35)] outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
               />
             </label>
+
+            <section className="rounded-xl border border-black/10 bg-white/75 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 items-center justify-center">
+                    <img
+                      src="/lastfm/lastfm.png"
+                      alt="Last.fm"
+                      className="h-5 w-5 object-contain"
+                    />
+                  </span>
+                  <div>
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                      Integrations
+                    </p>
+                    <h3 className="mb-0 text-base text-text">Last.fm connection</h3>
+                    <p className="mb-0 mt-1 text-xs text-slate-600">
+                      Link Last.fm to pull your recent listening history into your profile.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-col gap-2">
+                {lastfmUsername ? (
+                  <>
+                    <span className="inline-flex items-center self-start rounded-full border border-orange-500/25 bg-accent/15 px-2.5 py-1 text-[11px] font-semibold text-accent">
+                      Connected as {lastfmUsername}
+                    </span>
+                    <button
+                      type="button"
+                      className="h-9 rounded-lg border border-red-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-none transition hover:-translate-y-0.5 hover:border-red-300 hover:text-red-700 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                      onClick={() => {
+                        if (typeof onDisconnectLastFm === 'function') onDisconnectLastFm()
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  </>
+                ) : (
+                  <LastFmConnectButton className="w-full shadow-none text-sm" />
+                )}
+              </div>
+            </section>
 
             {errorMessage ? (
               <p className="mb-0 text-xs font-semibold text-red-600">{errorMessage}</p>

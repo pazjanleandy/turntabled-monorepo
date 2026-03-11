@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Calendar, ChatCircle, Headphones, Heart, ListBullets, MusicNotes, Radio, Star } from 'phosphor-react'
+import { useNavigate } from 'react-router-dom'
+import { Calendar, ListBullets, MusicNotes, Star } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import CoverImage from '../components/CoverImage.jsx'
-import LastFmConnectButton from '../components/LastFmConnectButton.jsx'
 import ReviewModal from '../components/album/ReviewModal.jsx'
 import EditProfileModal from '../components/profile/EditProfileModal.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
@@ -10,16 +10,21 @@ import FavoritesReorderModal from '../components/profile/FavoritesReorderModal.j
 import FriendsSection from '../components/profile/FriendsSection.jsx'
 import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
+import MobileProfileMediaSection from '../components/profile/MobileProfileMediaSection.jsx'
+import MobileSocialSection from '../components/profile/MobileSocialSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
 import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
+import HomeMobileHeader from '../components/home/HomeMobileHeader.jsx'
+import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
 import { profileUser } from '../data/profileData.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import useFriendActivity from '../hooks/useFriendActivity.js'
 import useFriendsData from '../hooks/useFriendsData.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
+import { mapFriendActivityFeed } from '../lib/friendActivityFeed.jsx'
 import {
   PROFILE_EVENT_NAME,
   fetchCurrentProfile,
@@ -30,6 +35,13 @@ import { supabase } from '../supabase.js'
 
 const BACKLOG_UPDATED_EVENT_NAME = 'turntabled:backlog-updated'
 const PROFILE_BACKLOG_STATUSES = new Set(['backloggd', 'pending', 'listening', 'unfinished'])
+const PROFILE_BACKLOG_PREVIEW_STATUS = 'backloggd'
+
+function getNormalizedBacklogStatus(item) {
+  const rawStatus = String(item?.statusRaw ?? '').trim().toLowerCase()
+  if (rawStatus) return rawStatus
+  return String(item?.status ?? '').trim().toLowerCase()
+}
 
 function formatRelativeTime(value) {
   if (!value) return 'just now'
@@ -223,8 +235,18 @@ function mapApiProfileToViewModel(profilePayload, fallbackUser) {
   }
 }
 
+function mapApiSocialCounts(profilePayload) {
+  const followers = Number(profilePayload?.social?.followers)
+  const following = Number(profilePayload?.social?.following)
+  return {
+    followers: Number.isFinite(followers) ? Math.max(0, followers) : 0,
+    following: Number.isFinite(following) ? Math.max(0, following) : 0,
+  }
+}
+
 export default function Profile() {
-  const { isSignedIn } = useAuthStatus()
+  const navigate = useNavigate()
+  const { isSignedIn, signOut } = useAuthStatus()
   const {
     activities: friendActivities,
     isLoading: isFriendActivityLoading,
@@ -246,6 +268,7 @@ export default function Profile() {
   const user = profileView.user
   const [profileFavorites, setProfileFavorites] = useState([])
   const [favoritesLoading, setFavoritesLoading] = useState(false)
+  const [socialCounts, setSocialCounts] = useState({ followers: 0, following: 0 })
   const [recentCarousel, setRecentCarousel] = useState([])
   const [recentActivityLogs, setRecentActivityLogs] = useState([])
   const [reviewList, setReviewList] = useState([])
@@ -261,6 +284,7 @@ export default function Profile() {
           slug: row?.friend?.id || username,
           name: username,
           initials: username.slice(0, 2).toUpperCase() || 'U',
+          avatarUrl: row?.friend?.avatarUrl || '',
           note: row?.friend?.bio || 'Friend',
           activity: 'Friend',
         }
@@ -285,21 +309,29 @@ export default function Profile() {
   const [isSavingFavoritesOrder, setIsSavingFavoritesOrder] = useState(false)
   const [favoriteOrderDraft, setFavoriteOrderDraft] = useState([])
   const [favoriteOrderError, setFavoriteOrderError] = useState('')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const favoriteCovers = {}
+  const backloggdPreview = useMemo(
+    () =>
+      (Array.isArray(backlogPreview) ? backlogPreview : []).filter(
+        (item) => getNormalizedBacklogStatus(item) === PROFILE_BACKLOG_PREVIEW_STATUS
+      ),
+    [backlogPreview],
+  )
   const recentCarouselForFavorites = useMemo(() => {
     if (recentCarousel.length > 0) return recentCarousel
     return mapRecentTracksToCarousel(recentTracks)
   }, [recentCarousel, recentTracks])
 
   useEffect(() => {
-    if (!isEditOpen && !isFavoritesManageOpen) return
+    if (!isEditOpen && !isFavoritesManageOpen && !isSidebarOpen) return
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = originalOverflow
     }
-  }, [isEditOpen, isFavoritesManageOpen])
+  }, [isEditOpen, isFavoritesManageOpen, isSidebarOpen])
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -348,6 +380,9 @@ export default function Profile() {
           const bTime = Date.parse(b?.addedAt ?? b?.updatedAt ?? '') || 0
           return bTime - aTime
         })
+        const backlogPreviewItems = sortedItems.filter(
+          (item) => getNormalizedBacklogStatus(item) === PROFILE_BACKLOG_PREVIEW_STATUS
+        )
         const latestLogs = sortedItems
           .slice(0, 5)
           .map((item) => ({
@@ -362,7 +397,7 @@ export default function Profile() {
           }))
 
         if (!cancelled) {
-          setBacklogPreview(sortedItems.slice(0, 8))
+          setBacklogPreview(backlogPreviewItems.slice(0, 8))
           setBacklogItems(sortedItems)
           setRecentActivityLogs(latestLogs)
           setReviewList(mapBacklogReviews(sortedItems))
@@ -544,6 +579,7 @@ export default function Profile() {
   useEffect(() => {
     if (!isSignedIn) {
       setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
+      setSocialCounts({ followers: 0, following: 0 })
       setFavoritesLoading(false)
       return
     }
@@ -591,6 +627,7 @@ export default function Profile() {
 
         if (!cancelled) {
           setProfileView(mapApiProfileToViewModel(payload, profileUser))
+          setSocialCounts(mapApiSocialCounts(payload))
           const apiLastfmUsername =
             typeof payload?.user?.lastfmUsername === 'string' ? payload.user.lastfmUsername.trim() : ''
           setLastfmUsername(apiLastfmUsername)
@@ -598,6 +635,7 @@ export default function Profile() {
       } catch {
         if (!cancelled) {
           setProfileView({ user: profileUser, avatarUrl: '', coverUrl: '' })
+          setSocialCounts({ followers: 0, following: 0 })
           setLastfmUsername('')
         }
       } finally {
@@ -709,6 +747,7 @@ export default function Profile() {
 
   const handleProfileSaved = (payload) => {
     setProfileView(mapApiProfileToViewModel(payload, profileUser))
+    setSocialCounts(mapApiSocialCounts(payload))
     if (payload?.favorites) {
       setProfileFavorites(mapApiFavoritesToAlbums(payload))
     }
@@ -828,105 +867,71 @@ export default function Profile() {
   }
 
   const friendActivityRows = useMemo(
-    () =>
-      friendActivities.map((item) => {
-        const username = item?.user?.username || 'Unknown user'
-        if (item.type === 'review') {
-          return {
-            id: item.id,
-            icon: <ChatCircle size={16} weight="bold" />,
-            text: `${username} reviewed ${item.albumTitle}`,
-            meta: `${item.artistName} - ${formatRelativeTime(item.reviewedAt || item.addedAt)}`,
-            cover: item.coverArtUrl || '/album/am.jpg',
-          }
-        }
-        if (item.type === 'favorite') {
-          return {
-            id: item.id,
-            icon: <Heart size={16} weight="bold" />,
-            text: `${username} marked ${item.albumTitle} as favorite`,
-            meta: `${item.artistName} - ${formatRelativeTime(item.updatedAt || item.addedAt)}`,
-            cover: item.coverArtUrl || '/album/am.jpg',
-          }
-        }
-        return {
-          id: item.id,
-          icon: <Headphones size={16} weight="bold" />,
-          text:
-            typeof item.rating === 'number'
-              ? `${username} rated ${item.albumTitle} ${item.rating}/5`
-              : `${username} logged ${item.albumTitle}`,
-          meta: `${item.artistName} - ${formatRelativeTime(item.addedAt)}`,
-          cover: item.coverArtUrl || '/album/am.jpg',
-        }
-      }),
+    () => mapFriendActivityFeed(friendActivities),
     [friendActivities],
   )
 
+  const navUser = useMemo(
+    () => ({
+      username: String(user?.handle ?? '').replace(/^@/, ''),
+      avatarUrl: profileView.avatarUrl || '',
+    }),
+    [profileView.avatarUrl, user?.handle],
+  )
+
+  const openSidebar = () => setIsSidebarOpen(true)
+  const closeSidebar = () => setIsSidebarOpen(false)
+
+  const handleMobileSignOut = () => {
+    signOut()
+    setIsSidebarOpen(false)
+    navigate('/')
+  }
+
   return (
     <div className="min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          <Navbar className="mx-auto w-[min(100%,900px)]" />
+      <div className="md:hidden">
+        <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} />
+      </div>
+      <div className="md:hidden">
+        <HomeMobileSidebar
+          isOpen={isSidebarOpen}
+          navUser={navUser}
+          isSignedIn={isSignedIn}
+          onClose={closeSidebar}
+          onSignOut={handleMobileSignOut}
+        />
+      </div>
 
-          <main className="overflow-hidden rounded-3xl border border-black/5 bg-white/60 backdrop-blur-md shadow-sm">
-            <div className="divide-y divide-black/5">
+      <div className="mx-auto w-full max-w-[430px] px-4 pb-8 pt-0 sm:px-5 md:max-w-6xl md:px-6 md:py-6 lg:px-8">
+        <div className="space-y-0 md:space-y-6">
+          <div className="hidden md:block">
+            <Navbar className="mx-auto w-[min(100%,900px)]" />
+          </div>
+
+          <main className="overflow-visible rounded-none border-0 bg-transparent shadow-none md:overflow-hidden md:rounded-3xl md:border md:border-[var(--border)] md:bg-[var(--card)] md:backdrop-blur-md md:shadow-sm">
+            <div className="divide-y divide-black/8 md:divide-[var(--border)]">
               <section className="py-0">
                 <ProfileHeader
                   embedded
+                  compactMobile
                   user={user}
                   avatarSrc={profileView.avatarUrl || ''}
                   bannerSrc={profileView.coverUrl || '/hero/hero1.jpg'}
+                  followerCount={socialCounts.followers}
+                  followingCount={socialCounts.following}
                   onCoverUpload={handleCoverUpload}
                   onEdit={() => setIsEditOpen(true)}
                 />
               </section>
 
-              <section className="px-6 py-6 sm:px-8">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-orange-500/25 bg-accent/15 text-accent">
-                      <Radio size={16} weight="bold" />
-                    </span>
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                        Integrations
-                      </p>
-                      <h2 className="mb-0 text-lg text-text">Last.fm connection</h2>
-                      <p className="mb-0 mt-2 text-sm text-slate-600">
-                        Link Last.fm to pull your recent listening history into your
-                        profile.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
-                    {lastfmUsername ? (
-                      <>
-                        <span className="inline-flex items-center rounded-full border border-orange-500/25 bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">
-                          Connected as {lastfmUsername}
-                        </span>
-                        <button
-                          type="button"
-                          className="rounded-xl border border-red-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 shadow-none transition hover:-translate-y-0.5 hover:border-red-300 hover:text-red-700 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-                          onClick={handleDisconnectLastFm}
-                        >
-                          Disconnect
-                        </button>
-                      </>
-                    ) : (
-                      <LastFmConnectButton className="w-full sm:w-auto shadow-none" />
-                    )}
-                  </div>
-                </div>
+              <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+                <StatsSection statsData={statsOverview} compactMobile />
               </section>
 
-              <section className="px-6 py-6 sm:px-8">
-                <StatsSection statsData={statsOverview} />
-              </section>
-
-              <section className="px-6 py-6 sm:px-8">
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-                  <aside className="flex flex-col gap-6 lg:col-span-8">
+              <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+                <div className="grid grid-cols-1 gap-5 md:gap-6 lg:grid-cols-12">
+                  <aside className="flex flex-col gap-5 md:gap-6 lg:col-span-8">
                     <FavoritesSection
                       favorites={favorites}
                       isLoadingFavorites={favoritesLoading}
@@ -935,6 +940,7 @@ export default function Profile() {
                       isLoadingRecent={recentCarouselLoading}
                       onManageFavorites={openFavoritesManageModal}
                       manageDisabled={favoritesLoading}
+                      compactMobile
                     />
                     <ReviewsSection
                       reviews={reviewList}
@@ -942,26 +948,37 @@ export default function Profile() {
                       onDeleteReview={handleDeleteReview}
                       isReviewActionBusy={isDeletingReview}
                       asCard={false}
+                      compactMobile
                     />
                   </aside>
 
-                  <aside className="flex flex-col gap-6 lg:col-span-4">
-                    <section className="rounded-2xl border border-black/10 bg-white/70 p-5 shadow-md">
-                      <div className="mb-3 flex items-center justify-between gap-3">
+                  <aside className="flex flex-col gap-5 md:gap-6 lg:col-span-4">
+                    <MobileProfileMediaSection
+                      backlogItems={backloggdPreview}
+                      isBacklogLoading={backlogLoading}
+                      latestLogs={recent}
+                      tracks={recentTracks}
+                      isTracksLoading={tracksStatus.loading}
+                      tracksError={tracksStatus.error}
+                      hasLastFmConnection={Boolean(lastfmUsername)}
+                    />
+
+                    <section className="hidden space-y-2.5 md:block md:rounded-2xl md:border md:border-[var(--border)] md:bg-[var(--surface-2)] md:p-5 md:shadow-md">
+                      <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
                             Backlog
                           </p>
-                          <h3 className="mb-0 text-lg text-text">Saved albums</h3>
+                          <h3 className="mb-0 text-lg text-text">Backloggd albums</h3>
                         </div>
                       </div>
                       {backlogLoading ? (
                         <p className="mb-0 text-sm text-slate-600">Loading backlog...</p>
-                      ) : backlogPreview.length === 0 ? (
-                        <p className="mb-0 text-sm text-slate-600">No backlog items yet.</p>
+                      ) : backloggdPreview.length === 0 ? (
+                        <p className="mb-0 text-sm text-slate-600">No backloggd albums yet.</p>
                       ) : (
-                        <ul className="divide-y divide-black/5">
-                          {backlogPreview.map((item) => (
+                        <ul className="divide-y divide-[var(--border)]">
+                          {backloggdPreview.map((item) => (
                             <li key={item.id} className="flex items-center gap-3 py-2.5">
                               <div className="h-12 w-12 overflow-hidden border border-black/10 bg-black/5">
                                 <CoverImage
@@ -978,43 +995,56 @@ export default function Profile() {
                                   {item.artistNameRaw}
                                 </p>
                               </div>
-                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
-                                {item.rating ?? 0}/5
-                              </span>
                             </li>
                           ))}
                         </ul>
                       )}
                     </section>
 
-                    <LatestLogsSection recent={recent} asCard={false} />
-                    <FriendsSection friends={friendsList} asCard={false} />
-                    <LastFmRecentTracks
-                      username={lastfmUsername}
-                      tracks={recentTracks}
-                      isLoading={tracksStatus.loading}
-                      error={tracksStatus.error}
-                      asCard={false}
-                    />
+                    <div className="hidden md:block">
+                      <LatestLogsSection recent={recent} asCard={false} />
+                    </div>
+                    <div className="hidden md:block">
+                      <FriendsSection friends={friendsList} asCard={false} />
+                    </div>
+                    <div className="hidden md:block">
+                      <LastFmRecentTracks
+                        username={lastfmUsername}
+                        tracks={recentTracks}
+                        isLoading={tracksStatus.loading}
+                        error={tracksStatus.error}
+                        asCard={false}
+                      />
+                    </div>
                   </aside>
                 </div>
               </section>
 
-              <section className="px-6 py-6 sm:px-8">
-                <RecentActivitySection
+              <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+                <MobileSocialSection
+                  friends={friendsList}
                   activity={friendActivityRows}
-                  isLoading={isFriendActivityLoading}
-                  error={friendActivityError}
-                  emptyMessage={
-                    hasFriends
-                      ? 'No friend activity yet.'
-                      : 'No friend activity yet. Add friends to see their music activity.'
-                  }
+                  isActivityLoading={isFriendActivityLoading}
+                  activityError={friendActivityError}
+                  hasFriends={hasFriends}
+                  emptyActivityMessage="No friend activity yet. Add friends to see their music activity."
                 />
+                <div className="hidden md:block">
+                  <RecentActivitySection
+                    activity={friendActivityRows}
+                    isLoading={isFriendActivityLoading}
+                    error={friendActivityError}
+                    emptyMessage={
+                      hasFriends
+                        ? 'No friend activity yet.'
+                        : 'No friend activity yet. Add friends to see their music activity.'
+                    }
+                  />
+                </div>
               </section>
 
-              <section className="px-6 py-6 sm:px-8">
-                <ProfileCTA asCard={false} />
+              <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
+                <ProfileCTA asCard={false} compactMobile />
               </section>
             </div>
           </main>
@@ -1036,6 +1066,8 @@ export default function Profile() {
         user={user}
         avatarSrc={profileView.avatarUrl || '/profile/rainy.jpg'}
         bannerSrc={profileView.coverUrl || '/hero/hero1.jpg'}
+        lastfmUsername={lastfmUsername}
+        onDisconnectLastFm={handleDisconnectLastFm}
         onClose={closeEditModal}
         onSaved={handleProfileSaved}
       />

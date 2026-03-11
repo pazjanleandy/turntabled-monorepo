@@ -162,6 +162,26 @@ export class ProfileRepository {
     return data ?? [];
   }
 
+  async countFollowersByUser(userId) {
+    const { count, error } = await this.supabase
+      .from("friends")
+      .select("id", { count: "exact", head: true })
+      .eq("friend_id", userId);
+
+    handleDbError(error, "counting followers");
+    return Number.isFinite(Number(count)) ? Number(count) : 0;
+  }
+
+  async countFollowingByUser(userId) {
+    const { count, error } = await this.supabase
+      .from("friends")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    handleDbError(error, "counting following");
+    return Number.isFinite(Number(count)) ? Number(count) : 0;
+  }
+
   async updateFavoriteByBacklogId(userId, backlogId, isFavorite) {
     const { data, error } = await this.supabase
       .from("backlog")

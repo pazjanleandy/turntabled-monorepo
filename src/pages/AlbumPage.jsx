@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { CalendarPlus, ChatCircle, Heart, NotePencil, Star } from "phosphor-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, CalendarPlus, ChatCircle, Heart, MusicNotes, NotePencil, Star, UserCircle } from "phosphor-react";
 import Navbar from "../components/Navbar.jsx";
 import NavbarGuest from "../components/NavbarGuest.jsx";
 import BackButton from "../components/BackButton.jsx";
@@ -8,8 +8,15 @@ import CoverImage from "../components/CoverImage.jsx";
 import StarRating from "../components/StarRating.jsx";
 import LogDatesModal from "../components/album/LogDatesModal.jsx";
 import ReviewModal from "../components/album/ReviewModal.jsx";
+import HomeMobileSidebar from "../components/home/HomeMobileSidebar.jsx";
 import useAuthStatus from "../hooks/useAuthStatus.js";
 import { buildApiAuthHeaders } from "../lib/apiAuth.js";
+import {
+  PROFILE_EVENT_NAME,
+  emitProfileUpdated,
+  fetchCurrentProfile,
+  readCachedProfile,
+} from "../lib/profileClient.js";
 import { supabase } from "../supabase.js";
 
 const BACKLOG_UPDATED_EVENT_NAME = "turntabled:backlog-updated";
@@ -86,6 +93,170 @@ function LogCard({
 
       <div className="mt-3">
         <StarRating value={safeRating} readOnly={disabled} size={16} />
+      </div>
+    </div>
+  );
+}
+
+function MobileAlbumHeader({ isSignedIn, navUser, onOpenMenu }) {
+  const username = navUser?.username || "";
+  const avatarUrl = navUser?.avatarUrl || "";
+  const initials = (username || "U").slice(0, 2).toUpperCase();
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-black/10 bg-white/82 backdrop-blur-xl md:hidden">
+      <div className="mx-auto flex h-11 max-w-5xl items-center justify-between px-4 sm:px-5">
+        {isSignedIn ? (
+          <button
+            type="button"
+            aria-label="Open navigation menu"
+            onClick={onOpenMenu}
+            className="inline-flex h-8 w-8 items-center justify-center border-0 bg-transparent p-0 text-slate-700 shadow-none transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+          >
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="12"
+              viewBox="0 0 16 12"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M1 1H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M1 6H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M1 11H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : (
+          <span className="inline-flex h-8 w-8" aria-hidden="true" />
+        )}
+
+        <Link
+          to={isSignedIn ? "/home" : "/"}
+          className="inline-flex items-center gap-2 text-[13px] font-semibold text-text transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+        >
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-accent/15 text-accent">
+            <MusicNotes size={13} weight="bold" />
+          </span>
+          Turntabled
+        </Link>
+
+        {isSignedIn ? (
+          <Link
+            to="/profile"
+            aria-label="Open profile"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-black/10 bg-white/70 p-0 text-text transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={`${username || "User"} avatar`}
+                className="h-6 w-6 rounded-md object-cover"
+              />
+            ) : username ? (
+              <span className="text-[10px] font-bold uppercase text-accent">{initials}</span>
+            ) : (
+              <UserCircle size={16} weight="duotone" />
+            )}
+          </Link>
+        ) : (
+          <Link
+            to="/"
+            className="inline-flex h-8 items-center rounded-full border border-black/10 bg-white/70 px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-text transition hover:bg-white"
+          >
+            Sign in
+          </Link>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function MobileBackRow({ onBack }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-text shadow-none transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+      aria-label="Go back"
+    >
+      <ArrowLeft size={13} weight="bold" />
+      Back
+    </button>
+  );
+}
+
+function MobileActionPanel({
+  onLogDates,
+  onWriteReview,
+  onFavorite,
+  isFavorited = false,
+  favoriteBusy = false,
+  ratingValue = 0,
+  disabled,
+}) {
+  const numericRating = Number(ratingValue);
+  const safeRating =
+    Number.isFinite(numericRating) && numericRating >= 0 ? Math.min(numericRating, 5) : 0;
+
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white/68 p-3.5 shadow-[0_16px_30px_-24px_rgba(15,15,15,0.4)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Your log
+          </p>
+          <p className="mb-0 text-sm font-semibold text-text">Rate this album</p>
+        </div>
+        <button
+          type="button"
+          className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] transition ${
+            isFavorited
+              ? "border-orange-500/40 bg-accent/15 text-accent"
+              : "border-black/10 bg-white/75 text-text hover:text-accent"
+          } disabled:cursor-not-allowed disabled:opacity-55`}
+          onClick={onFavorite}
+          disabled={disabled || favoriteBusy}
+          title={
+            disabled
+              ? "Login required"
+              : isFavorited
+                ? "Remove from favorites"
+                : "Add to favorites"
+          }
+        >
+          <Heart size={12} weight={isFavorited ? "fill" : "bold"} />
+          {favoriteBusy ? "Saving..." : isFavorited ? "Favorited" : "Favorite"}
+        </button>
+      </div>
+
+      <div className="mt-2">
+        <StarRating value={safeRating} readOnly size={17} />
+      </div>
+      <p className="mb-0 mt-1 text-[11px] text-muted">
+        Adjust rating from your log entry.
+      </p>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-black/10 bg-white/72 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-text transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-55"
+          onClick={onWriteReview}
+          disabled={disabled}
+          title={disabled ? "Login required" : "Write a review"}
+        >
+          <NotePencil size={13} weight="bold" />
+          Review
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-orange-500/40 bg-accent px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1f130c] transition hover:bg-[#ef6b2f] disabled:cursor-not-allowed disabled:opacity-55"
+          onClick={onLogDates}
+          disabled={disabled}
+          title={disabled ? "Login required" : "Log album"}
+        >
+          <CalendarPlus size={13} weight="bold" />
+          Log album
+        </button>
       </div>
     </div>
   );
@@ -211,16 +382,16 @@ function AlbumReviewCard({
   };
 
   return (
-    <article className="flex items-start gap-3 py-4">
+    <article className="flex items-start gap-3 py-3.5 md:py-4">
       <div className="mt-0.5">
         {review?.user?.avatarUrl ? (
           <img
             src={review.user.avatarUrl}
             alt={`${username} avatar`}
-            className="h-10 w-10 rounded-full border border-black/10 object-cover"
+            className="h-9 w-9 rounded-full border border-black/10 object-cover md:h-10 md:w-10"
           />
         ) : (
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-accent/15 text-xs font-semibold uppercase text-accent">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-accent/15 text-[10px] font-semibold uppercase text-accent md:h-10 md:w-10 md:text-xs">
             {getReviewerInitials(username)}
           </span>
         )}
@@ -228,22 +399,22 @@ function AlbumReviewCard({
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="mb-0 text-sm text-muted">Review by</p>
+          <p className="mb-0 text-[12px] text-muted md:text-sm">Review by</p>
           {profilePath ? (
             <Link
               to={profilePath}
-              className="text-sm font-semibold text-text transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+              className="text-[13px] font-semibold text-text transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 md:text-sm"
             >
               @{username.replace(/^@/, "")}
             </Link>
           ) : (
-            <p className="mb-0 text-sm font-semibold text-text">@{username.replace(/^@/, "")}</p>
+            <p className="mb-0 text-[13px] font-semibold text-text md:text-sm">@{username.replace(/^@/, "")}</p>
           )}
           <StarRating value={ratingValue} readOnly size={13} />
           <span className="text-xs font-semibold text-muted">{ratingValue}/5</span>
           <span className="text-xs text-muted">{formatReviewDate(review?.reviewedAt ?? review?.addedAt)}</span>
         </div>
-        <p className="mb-0 mt-2 whitespace-pre-wrap text-sm text-slate-700">{review?.reviewText}</p>
+        <p className="mb-0 mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700 md:mt-2 md:text-sm">{review?.reviewText}</p>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
@@ -279,7 +450,7 @@ function AlbumReviewCard({
         </div>
 
         {isCommentsOpen ? (
-          <div className="mt-2.5 rounded-xl border border-black/10 bg-[#f8f6f4]/85">
+          <div className="mt-2.5 rounded-lg border border-black/10 bg-[#f8f6f4]/85 md:rounded-xl">
             <div className="relative px-2.5 py-2.5 sm:px-3">
               {comments.length > 0 ? (
                 <>
@@ -463,8 +634,9 @@ function AlbumReviewCard({
 }
 
 export default function AlbumPage() {
+  const navigate = useNavigate();
   const { releaseId } = useParams();
-  const { isSignedIn } = useAuthStatus();
+  const { isSignedIn, signOut } = useAuthStatus();
   const [album, setAlbum] = useState(null);
   const [currentUserId, setCurrentUserId] = useState("");
   const [albumRefreshKey, setAlbumRefreshKey] = useState(0);
@@ -479,12 +651,68 @@ export default function AlbumPage() {
   const [reviewCommentBusyId, setReviewCommentBusyId] = useState("");
   const [reviewCommentEditBusyId, setReviewCommentEditBusyId] = useState("");
   const [reviewCommentDeleteBusyId, setReviewCommentDeleteBusyId] = useState("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [navUser, setNavUser] = useState(() => {
+    const cached = readCachedProfile();
+    return {
+      username: cached?.username || "",
+      avatarUrl: cached?.avatarUrl || "",
+    };
+  });
 
   useEffect(() => {
     if (!isSignedIn) {
       setCurrentUserId("");
     }
   }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setNavUser({ username: "", avatarUrl: "" });
+      setIsSidebarOpen(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadNavUser() {
+      try {
+        const profile = await fetchCurrentProfile();
+        if (!cancelled) {
+          emitProfileUpdated(profile);
+          setNavUser({ username: profile.username || "", avatarUrl: profile.avatarUrl || "" });
+        }
+      } catch {
+        // Keep cached profile on fetch failure.
+      }
+    }
+
+    const handleProfileUpdate = (event) => {
+      const profile = event?.detail;
+      if (!profile) return;
+      setNavUser({
+        username: profile.username || "",
+        avatarUrl: profile.avatarUrl || "",
+      });
+    };
+
+    window.addEventListener(PROFILE_EVENT_NAME, handleProfileUpdate);
+    loadNavUser();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(PROFILE_EVENT_NAME, handleProfileUpdate);
+    };
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isSidebarOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -961,20 +1189,53 @@ export default function AlbumPage() {
   };
 
   const isAlbumFavorited = Boolean(backlogItem?.isFavorite);
+  const openSidebar = () => setIsSidebarOpen(true);
+  const closeSidebar = () => setIsSidebarOpen(false);
+
+  const handleMobileSignOut = () => {
+    signOut();
+    setNavUser({ username: "", avatarUrl: "" });
+    closeSidebar();
+    navigate("/");
+  };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
-          {isSignedIn ? (
-            <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
-          ) : (
-            <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
-          )}
-          <BackButton className="self-start" />
-          <section className="card vinyl-texture">
-            <p className="mb-0 text-sm text-muted">Loading album details...</p>
-          </section>
+      <div className="min-h-screen">
+        <MobileAlbumHeader isSignedIn={isSignedIn} navUser={navUser} onOpenMenu={openSidebar} />
+        {isSignedIn ? (
+          <div className="md:hidden">
+            <HomeMobileSidebar
+              isOpen={isSidebarOpen}
+              navUser={navUser}
+              isSignedIn={isSignedIn}
+              onClose={closeSidebar}
+              onSignOut={handleMobileSignOut}
+            />
+          </div>
+        ) : null}
+
+        <div className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-5 md:px-10 lg:px-16">
+          <div className="space-y-6 md:space-y-10">
+            <div className="hidden md:block">
+              {isSignedIn ? (
+                <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+              ) : (
+                <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+              )}
+            </div>
+
+            <div className="pt-3 md:hidden">
+              <MobileBackRow onBack={() => navigate(-1)} />
+            </div>
+            <div className="hidden md:block">
+              <BackButton className="self-start" />
+            </div>
+
+            <section className="card vinyl-texture">
+              <p className="mb-0 text-sm text-muted">Loading album details...</p>
+            </section>
+          </div>
         </div>
       </div>
     );
@@ -982,49 +1243,207 @@ export default function AlbumPage() {
 
   if (!safeAlbum) {
     return (
-      <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
-          {isSignedIn ? (
-            <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
-          ) : (
-            <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
-          )}
-          <BackButton className="self-start" />
+      <div className="min-h-screen">
+        <MobileAlbumHeader isSignedIn={isSignedIn} navUser={navUser} onOpenMenu={openSidebar} />
+        {isSignedIn ? (
+          <div className="md:hidden">
+            <HomeMobileSidebar
+              isOpen={isSidebarOpen}
+              navUser={navUser}
+              isSignedIn={isSignedIn}
+              onClose={closeSidebar}
+              onSignOut={handleMobileSignOut}
+            />
+          </div>
+        ) : null}
 
-          <section className="card vinyl-texture">
-            <h1 className="mb-2 text-2xl">Album not found</h1>
-            <p className="mb-4 text-sm text-muted">
-              {loadError || "We could not find that album release. Try browsing the explore page."}
-            </p>
-            <Link className="btn-primary inline-flex px-4 py-2 text-sm" to="/explore">
-              Back to explore
-            </Link>
-          </section>
+        <div className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-5 md:px-10 lg:px-16">
+          <div className="space-y-6 md:space-y-10">
+            <div className="hidden md:block">
+              {isSignedIn ? (
+                <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+              ) : (
+                <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+              )}
+            </div>
+
+            <div className="pt-3 md:hidden">
+              <MobileBackRow onBack={() => navigate(-1)} />
+            </div>
+            <div className="hidden md:block">
+              <BackButton className="self-start" />
+            </div>
+
+            <section className="card vinyl-texture">
+              <h1 className="mb-2 text-2xl">Album not found</h1>
+              <p className="mb-4 text-sm text-muted">
+                {loadError || "We could not find that album release. Try browsing the explore page."}
+              </p>
+              <Link className="btn-primary inline-flex px-4 py-2 text-sm" to="/explore">
+                Back to explore
+              </Link>
+            </section>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen px-5 pb-12 pt-0 md:px-10 lg:px-16">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
-        {isSignedIn ? (
-          <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
-        ) : (
-          <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
-        )}
-        <BackButton className="self-start" />
+    <div className="min-h-screen">
+      <MobileAlbumHeader isSignedIn={isSignedIn} navUser={navUser} onOpenMenu={openSidebar} />
+      {isSignedIn ? (
+        <div className="md:hidden">
+          <HomeMobileSidebar
+            isOpen={isSidebarOpen}
+            navUser={navUser}
+            isSignedIn={isSignedIn}
+            onClose={closeSidebar}
+            onSignOut={handleMobileSignOut}
+          />
+        </div>
+      ) : null}
 
-        <section className="card vinyl-texture">
-          <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px] lg:gap-10">
-            <div className="min-w-0">
-              <CoverImage
-                src={safeAlbum.cover || "/album/am.jpg"}
-                alt={`${safeAlbum.title} by ${safeAlbum.artist} cover`}
-                className="w-full max-w-[220px] shadow-[0_14px_28px_-22px_rgba(15,15,15,0.35)]"
+      <div className="mx-auto w-full max-w-5xl px-4 pb-12 sm:px-5 md:px-10 lg:px-16">
+        <div className="space-y-6 md:space-y-10">
+          <div className="hidden md:block">
+            {isSignedIn ? (
+              <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+            ) : (
+              <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+            )}
+          </div>
+          <div className="pt-3 md:hidden">
+            <MobileBackRow onBack={() => navigate(-1)} />
+          </div>
+          <div className="hidden md:block">
+            <BackButton className="self-start" />
+          </div>
+
+          <section className="md:hidden">
+            <div className="flex items-start gap-3.5">
+              <div className="w-[42%] max-w-[170px] shrink-0">
+                <CoverImage
+                  src={safeAlbum.cover || "/album/am.jpg"}
+                  alt={`${safeAlbum.title} by ${safeAlbum.artist} cover`}
+                  className="w-full shadow-[0_16px_30px_-20px_rgba(15,15,15,0.45)]"
+                />
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  Album
+                </p>
+                <h1 className="mb-1 text-[1.72rem] leading-[1.02] text-text">{safeAlbum.title}</h1>
+                <p className="mb-3 text-[14px] font-semibold text-text">{safeAlbum.artist}</p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="rounded-full border border-black/8 bg-white/65 px-2.5 py-1 text-[10px] font-semibold text-text">
+                    {safeAlbum.type}
+                  </span>
+                  <span className="rounded-full border border-black/8 bg-white/65 px-2.5 py-1 text-[10px] font-semibold text-text">
+                    {safeAlbum.format}
+                  </span>
+                  <span className="rounded-full border border-black/8 bg-white/65 px-2.5 py-1 text-[10px] font-semibold text-text">
+                    {safeAlbum.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <dl className="mt-3.5 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-black/10 pt-3.5 text-[11px]">
+              <div>
+                <dt className="text-muted">Release</dt>
+                <dd className="mb-0 mt-0.5 font-semibold text-text">{safeAlbum.releaseDate || "Unknown"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Label</dt>
+                <dd className="mb-0 mt-0.5 truncate font-semibold text-text">{safeAlbum.label}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Catalog</dt>
+                <dd className="mb-0 mt-0.5 truncate font-semibold text-text">{safeAlbum.catalogNumber}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">Genres</dt>
+                <dd className="mb-0 mt-0.5 font-semibold leading-snug text-text">{safeAlbum.genres.join(", ")}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-4">
+              <MobileActionPanel
+                onLogDates={() => setIsLogDatesOpen(true)}
+                onWriteReview={() => setIsReviewOpen(true)}
+                onFavorite={handleFavoriteClick}
+                isFavorited={isAlbumFavorited}
+                favoriteBusy={isFavoriteSaving}
+                ratingValue={backlogItem?.rating ?? 0}
+                disabled={!isSignedIn}
               />
+            </div>
+          </section>
 
-              <div className="mt-4 lg:hidden">
+          <section className="hidden md:block card vinyl-texture">
+            <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)_320px] lg:gap-10">
+              <div className="min-w-0">
+                <CoverImage
+                  src={safeAlbum.cover || "/album/am.jpg"}
+                  alt={`${safeAlbum.title} by ${safeAlbum.artist} cover`}
+                  className="w-full max-w-[220px] shadow-[0_14px_28px_-22px_rgba(15,15,15,0.35)]"
+                />
+
+                <div className="mt-4 lg:hidden">
+                  <LogCard
+                    onLogDates={() => setIsLogDatesOpen(true)}
+                    onWriteReview={() => setIsReviewOpen(true)}
+                    onFavorite={handleFavoriteClick}
+                    isFavorited={isAlbumFavorited}
+                    favoriteBusy={isFavoriteSaving}
+                    ratingValue={backlogItem?.rating ?? 0}
+                    disabled={!isSignedIn}
+                  />
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                  Album
+                </p>
+
+                <h1 className="mb-1 text-3xl text-text leading-tight">{safeAlbum.title}</h1>
+                <p className="mb-4 text-sm font-semibold text-text">{safeAlbum.artist}</p>
+
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-black/5 bg-white/70 px-3 py-1 text-xs font-semibold text-text">
+                    {safeAlbum.type}
+                  </span>
+                  <span className="rounded-full border border-black/5 bg-white/70 px-3 py-1 text-xs font-semibold text-text">
+                    {safeAlbum.format}
+                  </span>
+                  <span className="rounded-full border border-black/5 bg-white/70 px-3 py-1 text-xs font-semibold text-text">
+                    {safeAlbum.length}
+                  </span>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-2">
+                  <p className="mb-0">
+                    <span className="font-semibold text-text">Release date:</span>{" "}
+                    {safeAlbum.releaseDate || "Unknown"}
+                  </p>
+                  <p className="mb-0">
+                    <span className="font-semibold text-text">Label:</span> {safeAlbum.label}
+                  </p>
+                  <p className="mb-0">
+                    <span className="font-semibold text-text">Catalog:</span>{" "}
+                    {safeAlbum.catalogNumber}
+                  </p>
+                  <p className="mb-0">
+                    <span className="font-semibold text-text">Genres:</span>{" "}
+                    {safeAlbum.genres.join(", ")}
+                  </p>
+                </div>
+              </div>
+
+              <aside className="hidden min-w-0 lg:block">
                 <LogCard
                   onLogDates={() => setIsLogDatesOpen(true)}
                   onWriteReview={() => setIsReviewOpen(true)}
@@ -1034,141 +1453,166 @@ export default function AlbumPage() {
                   ratingValue={backlogItem?.rating ?? 0}
                   disabled={!isSignedIn}
                 />
+              </aside>
+            </div>
+          </section>
+
+          <section className="border-t border-black/10 pt-5 md:hidden">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  Tracklist
+                </p>
+                <h2 className="mb-0 text-[1.25rem] leading-tight text-text">All tracks</h2>
               </div>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                {safeAlbum.tracks.length} tracks
+              </span>
             </div>
 
-            <div className="min-w-0">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-                Album
-              </p>
-
-              <h1 className="mb-1 text-3xl text-text leading-tight">{safeAlbum.title}</h1>
-              <p className="mb-4 text-sm font-semibold text-text">{safeAlbum.artist}</p>
-
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-black/5 bg-white/70 px-3 py-1 text-xs font-semibold text-text">
-                  {safeAlbum.type}
-                </span>
-                <span className="rounded-full border border-black/5 bg-white/70 px-3 py-1 text-xs font-semibold text-text">
-                  {safeAlbum.format}
-                </span>
-                <span className="rounded-full border border-black/5 bg-white/70 px-3 py-1 text-xs font-semibold text-text">
-                  {safeAlbum.length}
-                </span>
+            {safeAlbum.tracks.length === 0 ? (
+              <div className="mt-3 rounded-xl border border-black/10 bg-white/55 px-3.5 py-3 text-[13px] text-muted">
+                Track details are still syncing.
               </div>
+            ) : (
+              <ul className="mt-3 divide-y divide-black/10 rounded-2xl border border-black/10 bg-white/52 px-3">
+                {safeAlbum.tracks.map((track) => (
+                  <li
+                    key={`${track.number}-${track.title}`}
+                    className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-start gap-2 py-2.5"
+                  >
+                    <span className="pt-0.5 text-[11px] font-semibold text-muted">
+                      {String(track.number).padStart(2, "0")}
+                    </span>
+                    <p className="mb-0 text-[13px] font-semibold leading-snug text-text">{track.title}</p>
+                    <span className="whitespace-nowrap pl-2 text-[11px] font-semibold text-muted">{track.length}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-              <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-muted sm:grid-cols-2">
-                <p className="mb-0">
-                  <span className="font-semibold text-text">Release date:</span>{" "}
-                  {safeAlbum.releaseDate || "Unknown"}
+          <section className="hidden md:block card vinyl-texture">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                  Tracklist
                 </p>
-                <p className="mb-0">
-                  <span className="font-semibold text-text">Label:</span> {safeAlbum.label}
-                </p>
-                <p className="mb-0">
-                  <span className="font-semibold text-text">Catalog:</span>{" "}
-                  {safeAlbum.catalogNumber}
-                </p>
-                <p className="mb-0">
-                  <span className="font-semibold text-text">Genres:</span>{" "}
-                  {safeAlbum.genres.join(", ")}
-                </p>
+                <h2 className="mb-0 text-xl text-text">All tracks</h2>
               </div>
+              <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                {safeAlbum.tracks.length} tracks
+              </span>
             </div>
 
-            <aside className="hidden min-w-0 lg:block">
-              <LogCard
-                onLogDates={() => setIsLogDatesOpen(true)}
-                onWriteReview={() => setIsReviewOpen(true)}
-                onFavorite={handleFavoriteClick}
-                isFavorited={isAlbumFavorited}
-                favoriteBusy={isFavoriteSaving}
-                ratingValue={backlogItem?.rating ?? 0}
-                disabled={!isSignedIn}
-              />
-            </aside>
-          </div>
-        </section>
+            {safeAlbum.tracks.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-sm text-muted">
+                Track details are still syncing.
+              </div>
+            ) : (
+              <ul className="mt-4 divide-y divide-black/5">
+                {safeAlbum.tracks.map((track) => (
+                  <li
+                    key={`${track.number}-${track.title}`}
+                    className="flex items-center gap-4 py-3"
+                  >
+                    <span className="w-6 text-xs font-semibold text-muted">
+                      {String(track.number).padStart(2, "0")}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0 truncate text-sm font-semibold text-text">{track.title}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-muted">{track.length}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-        <section className="card vinyl-texture">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-                Tracklist
-              </p>
-              <h2 className="mb-0 text-xl text-text">All tracks</h2>
-            </div>
-            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-              {safeAlbum.tracks.length} tracks
-            </span>
-          </div>
+          <div id="album-community-reviews" className="scroll-mt-20 md:scroll-mt-24" />
 
-          {safeAlbum.tracks.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-sm text-muted">
-              Track details are still syncing.
+          <section className="border-t border-black/10 pt-5 md:hidden">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                  Reviews
+                </p>
+                <h2 className="mb-0 text-[1.25rem] leading-tight text-text">Community reviews</h2>
+              </div>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                {safeAlbum.reviews.length} review{safeAlbum.reviews.length === 1 ? "" : "s"}
+              </span>
             </div>
-          ) : (
-            <ul className="mt-4 divide-y divide-black/5">
-              {safeAlbum.tracks.map((track) => (
-                <li
-                  key={`${track.number}-${track.title}`}
-                  className="flex items-center gap-4 py-3"
-                >
-                  <span className="w-6 text-xs font-semibold text-muted">
-                    {String(track.number).padStart(2, "0")}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-0 truncate text-sm font-semibold text-text">{track.title}</p>
-                  </div>
-                  <span className="text-xs font-semibold text-muted">{track.length}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
 
-        <section className="card vinyl-texture">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-                Reviews
-              </p>
-              <h2 className="mb-0 text-xl text-text">Community reviews</h2>
-            </div>
-            <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
-              {safeAlbum.reviews.length} review{safeAlbum.reviews.length === 1 ? "" : "s"}
-            </span>
-          </div>
+            {safeAlbum.reviews.length === 0 ? (
+              <div className="mt-3 rounded-xl border border-black/10 bg-white/55 px-3.5 py-3 text-[13px] text-muted">
+                No reviews yet. Be the first to review this album.
+              </div>
+            ) : (
+              <div className="mt-2 divide-y divide-black/10">
+                {safeAlbum.reviews.map((review) => (
+                  <AlbumReviewCard
+                    key={review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`}
+                    review={review}
+                    isSignedIn={isSignedIn}
+                    currentUserId={currentUserId}
+                    likeBusy={reviewLikeBusyId === review?.backlogId}
+                    commentBusy={reviewCommentBusyId === review?.backlogId}
+                    editBusyCommentId={reviewCommentEditBusyId}
+                    deleteBusyCommentId={reviewCommentDeleteBusyId}
+                    onToggleLike={handleReviewLikeToggle}
+                    onAddComment={handleReviewCommentAdd}
+                    onEditComment={handleReviewCommentEdit}
+                    onDeleteComment={handleReviewCommentDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
-          {safeAlbum.reviews.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-sm text-muted">
-              No reviews yet. Be the first to review this album.
+          <section className="hidden md:block card vinyl-texture">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                  Reviews
+                </p>
+                <h2 className="mb-0 text-xl text-text">Community reviews</h2>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+                {safeAlbum.reviews.length} review{safeAlbum.reviews.length === 1 ? "" : "s"}
+              </span>
             </div>
-          ) : (
-            <div className="mt-2 divide-y divide-black/5">
-              {safeAlbum.reviews.map((review) => (
-                <AlbumReviewCard
-                  key={review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`}
-                  review={review}
-                  isSignedIn={isSignedIn}
-                  currentUserId={currentUserId}
-                  likeBusy={reviewLikeBusyId === review?.backlogId}
-                  commentBusy={reviewCommentBusyId === review?.backlogId}
-                  editBusyCommentId={reviewCommentEditBusyId}
-                  deleteBusyCommentId={reviewCommentDeleteBusyId}
-                  onToggleLike={handleReviewLikeToggle}
-                  onAddComment={handleReviewCommentAdd}
-                  onEditComment={handleReviewCommentEdit}
-                  onDeleteComment={handleReviewCommentDelete}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+
+            {safeAlbum.reviews.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-sm text-muted">
+                No reviews yet. Be the first to review this album.
+              </div>
+            ) : (
+              <div className="mt-2 divide-y divide-black/5">
+                {safeAlbum.reviews.map((review) => (
+                  <AlbumReviewCard
+                    key={review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`}
+                    review={review}
+                    isSignedIn={isSignedIn}
+                    currentUserId={currentUserId}
+                    likeBusy={reviewLikeBusyId === review?.backlogId}
+                    commentBusy={reviewCommentBusyId === review?.backlogId}
+                    editBusyCommentId={reviewCommentEditBusyId}
+                    deleteBusyCommentId={reviewCommentDeleteBusyId}
+                    onToggleLike={handleReviewLikeToggle}
+                    onAddComment={handleReviewCommentAdd}
+                    onEditComment={handleReviewCommentEdit}
+                    onDeleteComment={handleReviewCommentDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
 
       {logNotice ? (
-        <div className="pointer-events-none fixed bottom-4 right-4 z-50 rounded-full border border-black/10 bg-white/95 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,15,15,0.45)]">
+        <div className="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full border border-black/10 bg-white/95 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,15,15,0.45)] md:left-auto md:right-4 md:translate-x-0">
           {logNotice}
         </div>
       ) : null}

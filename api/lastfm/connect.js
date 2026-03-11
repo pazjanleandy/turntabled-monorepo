@@ -33,12 +33,6 @@ export default async function handler(req, res) {
       apiSecret: env.LASTFM_API_SECRET,
     });
 
-    const token = await lastFmService.requestAuthToken();
-    if (!token) {
-      sendJson(res, 502, { error: "Unable to start Last.fm connection." }, requestId);
-      return;
-    }
-
     const state = lastFmService.createConnectionState(userId);
     if (!state) {
       sendJson(res, 500, { error: "Unable to start Last.fm connection." }, requestId);
@@ -46,7 +40,8 @@ export default async function handler(req, res) {
     }
 
     const callbackUrl = buildCallbackUrl(env.LASTFM_CALLBACK_URL, state);
-    const authorizationUrl = lastFmService.buildAuthorizationUrl({ callbackUrl, token });
+    // Web auth flow does not require a pre-issued token; Last.fm returns one to the callback.
+    const authorizationUrl = lastFmService.buildAuthorizationUrl({ callbackUrl });
     if (!authorizationUrl) {
       sendJson(res, 500, { error: "Unable to start Last.fm connection." }, requestId);
       return;

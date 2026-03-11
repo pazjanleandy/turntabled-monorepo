@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js'
+import { buildApiAuthHeaders } from './apiAuth.js'
 
 export const FRIENDS_UPDATED_EVENT_NAME = 'turntabled:friends-updated'
 
@@ -24,6 +25,23 @@ async function requireAuthUserId() {
 function isRlsError(error) {
   const message = String(error?.message || '').toLowerCase()
   return message.includes('row-level security') || message.includes('permission denied')
+}
+
+function buildAvatarUrl(avatarValue) {
+  if (typeof avatarValue !== 'string' || !avatarValue.trim()) return ''
+  const normalized = avatarValue.trim()
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    return normalized
+  }
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(normalized)
+  return data?.publicUrl || ''
+}
+
+function resolvePublicAvatarUrl(userAvatarUrl, profileAvatarPath) {
+  const fromProfile = buildAvatarUrl(profileAvatarPath)
+  if (fromProfile) return fromProfile
+  return buildAvatarUrl(userAvatarUrl)
 }
 
 function mapPublicUser(row) {
@@ -77,7 +95,7 @@ function mapFriendRequestRow(row) {
 function getFriendActivityType(row) {
   const reviewText = typeof row?.review_text === 'string' ? row.review_text.trim() : ''
   if (reviewText) return 'review'
-  if (Boolean(row?.is_favorite)) return 'favorite'
+  if (row?.is_favorite) return 'favorite'
   return 'log'
 }
 
@@ -87,6 +105,7 @@ function mapFriendActivityRow(row) {
     id: row?.id ?? '',
     type,
     userId: row?.user_id ?? '',
+    status: row?.status ?? '',
     user: mapPublicUser(row?.user),
     albumTitle: row?.album?.title ?? row?.album_title_raw ?? 'Unknown album',
     artistName: row?.album?.artist?.name ?? row?.artist_name_raw ?? 'Unknown artist',
@@ -133,6 +152,70 @@ async function fetchAcceptedRequestRowsForUser(userId) {
   return Array.isArray(data) ? data : []
 }
 
+async function listProfileAvatarPathsByUserIds(userIds) {
+  const normalizedIds = Array.isArray(userIds)
+    ? userIds.filter((value) => typeof value === 'string' && value.trim())
+    : []
+  if (normalizedIds.length === 0) return new Map()
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,avatar_path')
+    .in('id', normalizedIds)
+
+  if (error) {
+    return new Map()
+  }
+
+  return new Map(
+    (Array.isArray(data) ? data : [])
+      .filter((row) => typeof row?.id === 'string' && row.id.trim())
+      .map((row) => [row.id, row?.avatar_path ?? '']),
+  )
+}
+
+function withResolvedFriendAvatar(entry, avatarPathByUserId) {
+  const friendUserId = entry?.friend?.id || entry?.friendId
+  const profileAvatarPath = friendUserId ? avatarPathByUserId.get(friendUserId) ?? '' : ''
+  return {
+    ...entry,
+    friend: {
+      ...(entry?.friend ?? {}),
+      avatarUrl: resolvePublicAvatarUrl(entry?.friend?.avatarUrl, profileAvatarPath),
+    },
+  }
+}
+
+async function fetchPublicProfileAvatarUrlsByUserIds(userIds) {
+  const normalizedIds = Array.isArray(userIds)
+    ? userIds.filter((value) => typeof value === 'string' && value.trim())
+    : []
+  if (normalizedIds.length === 0) return new Map()
+
+  const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+  const headers = await buildApiAuthHeaders().catch(() => ({}))
+
+  const avatarPairs = await Promise.all(
+    normalizedIds.map(async (userId) => {
+      try {
+        const response = await fetch(
+          `${apiBase}/api/profile/view?userId=${encodeURIComponent(userId)}`,
+          { headers, cache: 'no-store' },
+        )
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) return null
+        const avatarUrl = typeof payload?.user?.avatarUrl === 'string' ? payload.user.avatarUrl.trim() : ''
+        if (!avatarUrl) return null
+        return [userId, avatarUrl]
+      } catch {
+        return null
+      }
+    }),
+  )
+
+  return new Map(avatarPairs.filter(Boolean))
+}
+
 export async function fetchFriends() {
   const userId = await requireAuthUserId()
 
@@ -161,10 +244,47 @@ export async function fetchFriends() {
     mergedByFriendId.set(mapped.friendId, mapped)
   }
 
-  return Array.from(mergedByFriendId.values()).sort((a, b) => {
+  const mergedFriends = Array.from(mergedByFriendId.values()).sort((a, b) => {
     const aTime = Date.parse(a?.createdAt ?? '') || 0
     const bTime = Date.parse(b?.createdAt ?? '') || 0
     return bTime - aTime
+  })
+
+  const avatarPathByUserId = await listProfileAvatarPathsByUserIds(
+    mergedFriends
+      .map((entry) => entry?.friend?.id || entry?.friendId)
+      .filter((value) => typeof value === 'string' && value.trim()),
+  )
+
+  const friendsWithResolvedAvatars = mergedFriends.map((entry) =>
+    withResolvedFriendAvatar(entry, avatarPathByUserId),
+  )
+  const missingAvatarIds = friendsWithResolvedAvatars
+    .filter((entry) => !entry?.friend?.avatarUrl)
+    .map((entry) => entry?.friend?.id || entry?.friendId)
+    .filter((value) => typeof value === 'string' && value.trim())
+    .slice(0, 30)
+
+  if (missingAvatarIds.length === 0) {
+    return friendsWithResolvedAvatars
+  }
+
+  const fallbackAvatarByUserId = await fetchPublicProfileAvatarUrlsByUserIds(missingAvatarIds)
+  if (fallbackAvatarByUserId.size === 0) {
+    return friendsWithResolvedAvatars
+  }
+
+  return friendsWithResolvedAvatars.map((entry) => {
+    const friendUserId = entry?.friend?.id || entry?.friendId
+    const fallbackAvatar = friendUserId ? fallbackAvatarByUserId.get(friendUserId) ?? '' : ''
+    if (!fallbackAvatar) return entry
+    return {
+      ...entry,
+      friend: {
+        ...(entry?.friend ?? {}),
+        avatarUrl: fallbackAvatar,
+      },
+    }
   })
 }
 
@@ -226,6 +346,78 @@ export async function fetchRelationshipWithUser(targetUserId) {
   }
 
   return { status: 'none', request: mapFriendRequestRow(requestRow) }
+}
+
+export async function fetchFollowStateWithUser(targetUserId) {
+  const userId = await requireAuthUserId()
+
+  if (!targetUserId) {
+    return { status: 'not_following', followedAt: null }
+  }
+  if (targetUserId === userId) {
+    return { status: 'self', followedAt: null }
+  }
+
+  const { data: followRow, error } = await supabase
+    .from('friends')
+    .select('id,created_at')
+    .eq('user_id', userId)
+    .eq('friend_id', targetUserId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message || 'Failed to check follow state.')
+  }
+
+  if (followRow?.id) {
+    return { status: 'following', followedAt: followRow.created_at ?? null }
+  }
+
+  return { status: 'not_following', followedAt: null }
+}
+
+export async function followUser(targetUserId) {
+  const userId = await requireAuthUserId()
+  if (!targetUserId) {
+    throw new Error('Missing target user.')
+  }
+  if (targetUserId === userId) {
+    throw new Error('You cannot follow yourself.')
+  }
+
+  const { error } = await supabase
+    .from('friends')
+    .upsert([{ user_id: userId, friend_id: targetUserId }], {
+      onConflict: 'user_id,friend_id',
+      ignoreDuplicates: true,
+    })
+
+  if (error) {
+    throw new Error(error.message || 'Failed to follow user.')
+  }
+
+  emitFriendsUpdated()
+  return { status: 'following' }
+}
+
+export async function unfollowUser(targetUserId) {
+  const userId = await requireAuthUserId()
+  if (!targetUserId) {
+    throw new Error('Missing target user.')
+  }
+
+  const { error } = await supabase
+    .from('friends')
+    .delete()
+    .eq('user_id', userId)
+    .eq('friend_id', targetUserId)
+
+  if (error) {
+    throw new Error(error.message || 'Failed to unfollow user.')
+  }
+
+  emitFriendsUpdated()
+  return { status: 'not_following' }
 }
 
 export async function sendFriendRequest(targetUserId) {
@@ -465,8 +657,60 @@ export async function fetchFriendActivityFeed({ limit = 20 } = {}) {
     throw new Error(error.message || 'Failed to load friend activity.')
   }
 
+  const activities = (data ?? []).map(mapFriendActivityRow)
+  const activityUserIds = [...new Set(
+    activities
+      .map((entry) => entry?.user?.id || entry?.userId)
+      .filter((value) => typeof value === 'string' && value.trim()),
+  )]
+  const avatarPathByUserId = await listProfileAvatarPathsByUserIds(activityUserIds)
+  const activitiesWithResolvedAvatars = activities.map((entry) => {
+    const activityUserId = entry?.user?.id || entry?.userId
+    const profileAvatarPath = activityUserId ? avatarPathByUserId.get(activityUserId) ?? '' : ''
+    return {
+      ...entry,
+      user: {
+        ...(entry?.user ?? {}),
+        avatarUrl: resolvePublicAvatarUrl(entry?.user?.avatarUrl, profileAvatarPath),
+      },
+    }
+  })
+  const missingAvatarIds = activitiesWithResolvedAvatars
+    .filter((entry) => !entry?.user?.avatarUrl)
+    .map((entry) => entry?.user?.id || entry?.userId)
+    .filter((value) => typeof value === 'string' && value.trim())
+    .slice(0, 30)
+
+  if (missingAvatarIds.length === 0) {
+    return {
+      hasFriends: true,
+      activities: activitiesWithResolvedAvatars,
+    }
+  }
+
+  const fallbackAvatarByUserId = await fetchPublicProfileAvatarUrlsByUserIds(missingAvatarIds)
+  if (fallbackAvatarByUserId.size === 0) {
+    return {
+      hasFriends: true,
+      activities: activitiesWithResolvedAvatars,
+    }
+  }
+
+  const activitiesWithFallbackAvatars = activitiesWithResolvedAvatars.map((entry) => {
+    const activityUserId = entry?.user?.id || entry?.userId
+    const fallbackAvatar = activityUserId ? fallbackAvatarByUserId.get(activityUserId) ?? '' : ''
+    if (!fallbackAvatar) return entry
+    return {
+      ...entry,
+      user: {
+        ...(entry?.user ?? {}),
+        avatarUrl: fallbackAvatar,
+      },
+    }
+  })
+
   return {
     hasFriends: true,
-    activities: (data ?? []).map(mapFriendActivityRow),
+    activities: activitiesWithFallbackAvatars,
   }
 }
