@@ -32,6 +32,24 @@ function dedupeStringIds(values = []) {
   return output;
 }
 
+function shouldSuppressListCommentSummaryError(error) {
+  if (!error) return false;
+  const code = String(error.code ?? "").trim();
+  const message = String(error.message ?? "").toLowerCase();
+  const details = String(error.details ?? "").toLowerCase();
+
+  if (code === "PGRST205" || code === "42P01" || code === "42501") {
+    return true;
+  }
+
+  // Fallback in case database adapters omit SQLSTATE code.
+  return (
+    message.includes("community_list_comments") ||
+    message.includes("permission denied") ||
+    details.includes("permission denied")
+  );
+}
+
 export class CommunityListsRepository {
   constructor(supabase) {
     this.supabase = supabase;
@@ -268,6 +286,11 @@ export class CommunityListsRepository {
       .select("id,list_id,created_at")
       .in("list_id", normalizedIds);
 
+    // Comment counts are optional for list feeds. If this table/policy is not available,
+    // keep the endpoint functional and surface zero counts instead of failing the whole page.
+    if (shouldSuppressListCommentSummaryError(error)) {
+      return [];
+    }
     handleDbError(error, "fetching list comments by list ids");
     return data ?? [];
   }

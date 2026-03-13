@@ -2,7 +2,7 @@
 
 Turntabled is a React + Vite + Tailwind app for album logging, artist discovery, profile management, and social connections.
 
-Last updated: March 11, 2026.
+Last updated: March 13, 2026.
 
 ## Stack
 
@@ -164,6 +164,51 @@ Why two terminals:
 Use `.env.example` as the template.
 
 ## Recent Changes We Made
+
+### Mar 13, 2026
+
+- Homepage editorial hierarchy + flow refactor:
+  - restructured home into clearer layers (top momentum/personal pulse, editorial spotlight, social conversation, discovery support)
+  - reduced “stack of equal cards” feeling with stronger rhythm and spacing between major sections
+- Social/feed cleanup:
+  - merged overlapping friend modules into one unified social activity section
+  - improved row hierarchy and scanability for mixed activity types (logged, reviewed, rated, backlog/list actions)
+- Trending reviews overhaul:
+  - desktop section shifted from utility-heavy paneling to editorial spotlight treatment
+  - featured review now behaves more like a pull-quote/excerpt centerpiece
+  - softened side divider, removed redundant utility counters, improved “Also trending” rhythm/copy
+  - mobile “Community pulse” rebuilt as a mobile-native editorial flow (featured story + clean stacked supporting rows)
+- Lists showcase polish:
+  - preserved hero + supporting structure while refining spacing, hierarchy, and CTA integration
+  - reduced collage competition on mobile, softened badge/kicker treatment, improved metadata/CTA alignment
+  - supporting mobile recommendation block tightened without flattening into utility rows
+- GRAMMY section deep refinements:
+  - preserved ceremonial editorial intent while improving integration with page flow
+  - evolved light-mode color system to be native to light theme (no dark-slab transplant effect)
+  - removed outer card shell so section content sits directly in page background when requested
+  - mobile GRAMMY composition rebuilt into single-column editorial structure:
+    - clear AOTY hero
+    - stacked supporting winners list
+    - removed cramped mobile side-by-side/cropped behavior
+  - removed mobile “View all winners” CTA when requested
+- Mobile topbar notifications integration:
+  - replaced topbar profile avatar trigger with working notifications bell/dropdown
+  - wired unread count, open/close behavior, fetch, mark-read, mark-all-read, and destination navigation
+  - stabilized bell icon rendering against global button styles
+- Mobile stats parity:
+  - added rating distribution chart (with total rated count + empty state) to mobile home stats
+  - reused same bucket model as desktop for consistency
+
+### Mar 12, 2026
+
+- Notifications system foundation added:
+  - notifications persistence schema/migrations added (`2026031201_notifications_grants.sql`, `2026031202_notifications.sql`)
+  - notifications API surface added (`/api/notifications`, `/api/notifications/unread-count`, mark-one-read, mark-all-read)
+  - client notification helpers added (`src/lib/notificationsClient.js`)
+  - desktop navbar notification center integrated with unread badge + read-state controls
+- Explore/home editorial data integration:
+  - GRAMMY winners feed endpoint added and connected (`/api/explore/grammy-winners`)
+  - homepage GRAMMY spotlight section introduced and wired to live data
 
 ### Mar 11, 2026
 

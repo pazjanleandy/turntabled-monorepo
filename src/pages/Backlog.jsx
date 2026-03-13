@@ -585,7 +585,7 @@ export default function Backlog() {
       <div className="mx-auto w-full max-w-6xl px-4 pb-12 sm:px-6 md:px-10 lg:px-16">
         <div className="space-y-6 md:space-y-10">
           <div className="hidden md:block">
-            <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+            <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
           </div>
           <div className="hidden md:block">
             <BackButton className="self-start" />
@@ -817,3 +817,4 @@ export default function Backlog() {
     </div>
   )
 }
+

@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import PopularAlbumsSection from '../components/PopularAlbumsSection.jsx'
 import StatsPanel from '../components/StatsPanel.jsx'
-import RecentlyListenedSection from '../components/RecentlyListenedSection.jsx'
-import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import TrendingReviewsSection from '../components/TrendingReviewsSection.jsx'
 import BecauseCommunityLovesSection from '../components/BecauseCommunityLovesSection.jsx'
+import GrammyWinnersSection from '../components/GrammyWinnersSection.jsx'
+import FriendSocialSection from '../components/FriendSocialSection.jsx'
 import Footer from '../components/Footer.jsx'
 import { Headphones, PlusCircle } from 'phosphor-react'
 import useAuthStatus from '../hooks/useAuthStatus.js'
@@ -24,12 +24,28 @@ import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
 import HomeMobilePopularSection from '../components/home/HomeMobilePopularSection.jsx'
 import HomeMobileTrendingSection from '../components/home/HomeMobileTrendingSection.jsx'
 import HomeMobileStatsSection from '../components/home/HomeMobileStatsSection.jsx'
-import HomeMobileRecentlyListenedSection from '../components/home/HomeMobileRecentlyListenedSection.jsx'
-import HomeMobileFriendActivitySection from '../components/home/HomeMobileFriendActivitySection.jsx'
 
 const LOG_STATUSES = new Set(['listened'])
 const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'backloggd'])
 const LASTFM_RECENT_LIMIT = 5
+const RATING_BUCKETS = Array.from({ length: 9 }, (_, index) => 1 + index * 0.5)
+
+function buildRatingDistribution(items = []) {
+  const counts = new Map(RATING_BUCKETS.map((bucket) => [bucket.toFixed(1), 0]))
+
+  for (const item of items) {
+    const rating = Number(item?.rating)
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) continue
+    const bucket = Math.min(5, Math.max(1, Math.round(rating * 2) / 2))
+    const bucketKey = bucket.toFixed(1)
+    counts.set(bucketKey, (counts.get(bucketKey) ?? 0) + 1)
+  }
+
+  return RATING_BUCKETS.map((bucket) => ({
+    bucket,
+    count: counts.get(bucket.toFixed(1)) ?? 0,
+  }))
+}
 
 function pickLastFmCoverArt(images = []) {
   if (!Array.isArray(images)) return ''
@@ -169,11 +185,14 @@ export default function Home() {
   const [isTrendingLoading, setIsTrendingLoading] = useState(false)
   const [trendingError, setTrendingError] = useState('')
   const [trendingWindowDays, setTrendingWindowDays] = useState(7)
-  const [recentlyListened, setRecentlyListened] = useState([])
+  const [grammyWinners, setGrammyWinners] = useState([])
+  const [isGrammyLoading, setIsGrammyLoading] = useState(false)
+  const [, setRecentlyListened] = useState([])
   const [backlogStats, setBacklogStats] = useState({ listened: 0, backlog: 0, logs: 0 })
+  const [ratingDistribution, setRatingDistribution] = useState(() => buildRatingDistribution([]))
   const [userActivity, setUserActivity] = useState([])
-  const [isRecentLoading, setIsRecentLoading] = useState(false)
-  const [recentError, setRecentError] = useState('')
+  const [, setIsRecentLoading] = useState(false)
+  const [, setRecentError] = useState('')
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -312,9 +331,51 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+
+    async function loadGrammyWinners() {
+      setIsGrammyLoading(true)
+
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const response = await fetch(`${apiBase}/api/explore/grammy-winners`, {
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(payload?.error?.message ?? 'Failed to load GRAMMY winners.')
+        }
+
+        if (!cancelled) {
+          const items = Array.isArray(payload?.items) ? payload.items : []
+          setGrammyWinners(items)
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        if (!cancelled) {
+          setGrammyWinners([])
+        }
+      } finally {
+        if (!cancelled) {
+          setIsGrammyLoading(false)
+        }
+      }
+    }
+
+    loadGrammyWinners()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!isSignedIn) {
       setRecentlyListened([])
       setBacklogStats({ listened: 0, backlog: 0, logs: 0 })
+      setRatingDistribution(buildRatingDistribution([]))
       setUserActivity([])
       setRecentError('')
       setIsRecentLoading(false)
@@ -465,6 +526,7 @@ export default function Home() {
             backlog: backlogCount,
             logs: logsCount,
           })
+          setRatingDistribution(buildRatingDistribution(mapped))
           setUserActivity(activity)
         }
       } catch (error) {
@@ -472,6 +534,7 @@ export default function Home() {
         if (!cancelled) {
           setRecentlyListened([])
           setBacklogStats({ listened: 0, backlog: 0, logs: 0 })
+          setRatingDistribution(buildRatingDistribution([]))
           setUserActivity([])
           setRecentError(error?.message ?? 'Unable to load recently listened.')
         }
@@ -528,7 +591,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} />
+      <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} isSignedIn={isSignedIn} />
       <HomeMobileSidebar
         isOpen={isSidebarOpen}
         navUser={navUser}
@@ -538,9 +601,9 @@ export default function Home() {
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 pb-10 sm:px-6 lg:px-8 lg:pb-12">
-        <div className="space-y-8 lg:space-y-10">
+        <div className="space-y-10 lg:space-y-12">
           <div className="relative hidden lg:block">
-            <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+            <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
           </div>
 
           <main className="space-y-10 pt-1 lg:hidden">
@@ -549,88 +612,85 @@ export default function Home() {
               isLoading={isPopularLoading}
               error={popularError}
             />
-            <BecauseCommunityLovesSection />
+            <HomeMobileStatsSection stats={stats} ratingDistribution={ratingDistribution} />
+            <div className="py-3 sm:py-4">
+              <GrammyWinnersSection items={grammyWinners} isLoading={isGrammyLoading} />
+            </div>
             <HomeMobileTrendingSection
               reviews={trendingReviews}
               isLoading={isTrendingLoading}
               error={trendingError}
               windowDays={trendingWindowDays}
             />
-            <HomeMobileStatsSection stats={stats} />
-            <HomeMobileRecentlyListenedSection
-              albums={friendListeningRows}
+            <FriendSocialSection
+              activity={friendActivityRows}
+              listening={friendListeningRows}
               isLoading={isFriendActivityLoading}
               error={friendActivityError}
               isSignedIn={isSignedIn}
               hasFriends={hasFriends}
-            />
-            <HomeMobileFriendActivitySection
-              activity={friendActivityRows}
-              isLoading={isFriendActivityLoading}
-              error={friendActivityError}
+              compact
               emptyMessage={
                 hasFriends
                   ? 'No friend activity yet.'
                   : 'No friend activity yet. Add friends to see their music activity.'
               }
             />
+            <BecauseCommunityLovesSection />
           </main>
 
-          <main className="hidden lg:grid lg:grid-cols-[1.62fr_0.92fr] lg:items-start lg:gap-5 xl:gap-6">
-            <section className="min-w-0">
-              <PopularAlbumsSection
-                albums={filteredPopular}
-                search={search}
-                onSearchChange={setSearch}
-                isLoading={isPopularLoading}
-                error={popularError}
+          <main className="hidden space-y-14 lg:block">
+            <section className="grid grid-cols-[1.6fr_0.92fr] items-start gap-6 xl:gap-7">
+              <div className="min-w-0">
+                <PopularAlbumsSection
+                  albums={filteredPopular}
+                  search={search}
+                  onSearchChange={setSearch}
+                  isLoading={isPopularLoading}
+                  error={popularError}
+                />
+              </div>
+              <aside className="min-w-0 self-start">
+                <StatsPanel
+                  stats={stats}
+                  userActivity={userActivity}
+                  ratingDistribution={ratingDistribution}
+                />
+              </aside>
+            </section>
+
+            <section className="space-y-12">
+              <div className="py-2 xl:py-3">
+                <GrammyWinnersSection items={grammyWinners} isLoading={isGrammyLoading} />
+              </div>
+              <TrendingReviewsSection
+                reviews={trendingReviews}
+                isLoading={isTrendingLoading}
+                error={trendingError}
+                windowDays={trendingWindowDays}
               />
             </section>
 
-            <aside className="min-w-0 self-start">
-              <StatsPanel stats={stats} userActivity={userActivity} />
-            </aside>
-          </main>
-
-          <div className="hidden lg:block">
-            <RecentlyListenedSection
-              albums={friendListeningRows}
+            <FriendSocialSection
+              activity={friendActivityRows}
+              listening={friendListeningRows}
               isLoading={isFriendActivityLoading}
               error={friendActivityError}
               isSignedIn={isSignedIn}
               hasFriends={hasFriends}
-            />
-          </div>
-
-          <div className="hidden lg:block">
-            <div className="mx-auto w-full">
-              <BecauseCommunityLovesSection />
-            </div>
-          </div>
-
-          <div className="hidden lg:block">
-            <TrendingReviewsSection
-              reviews={trendingReviews}
-              isLoading={isTrendingLoading}
-              error={trendingError}
-              windowDays={trendingWindowDays}
-            />
-          </div>
-          <div className="hidden lg:block">
-            <RecentActivitySection
-              activity={friendActivityRows}
-              isLoading={isFriendActivityLoading}
-              error={friendActivityError}
               emptyMessage={
                 hasFriends
                   ? 'No friend activity yet.'
                   : 'No friend activity yet. Add friends to see their music activity.'
               }
             />
-          </div>
+
+            <BecauseCommunityLovesSection />
+          </main>
           <Footer />
         </div>
       </div>
     </div>
   )
 }
+

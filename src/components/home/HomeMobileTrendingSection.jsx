@@ -73,8 +73,8 @@ function FeaturedReview({ review }) {
       : ''
 
   return (
-    <article className="rounded-2xl border border-black/10 bg-white/75 p-3 shadow-subtle">
-      <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-3">
+    <article className="space-y-4">
+      <div className="grid grid-cols-[102px_minmax(0,1fr)] gap-3.5">
         {albumPath ? (
           <Link
             to={albumPath}
@@ -83,14 +83,14 @@ function FeaturedReview({ review }) {
             <CoverImage
               src={review?.album?.coverArtUrl || '/album/am.jpg'}
               alt={`${albumTitle} by ${artistName} cover`}
-              className="h-[104px] w-[104px] border border-black/10 shadow-subtle"
+              className="h-[102px] w-[102px] border border-black/10"
             />
           </Link>
         ) : (
           <CoverImage
             src={review?.album?.coverArtUrl || '/album/am.jpg'}
             alt={`${albumTitle} by ${artistName} cover`}
-            className="h-[104px] w-[104px] border border-black/10 shadow-subtle"
+            className="h-[102px] w-[102px] border border-black/10"
           />
         )}
 
@@ -109,25 +109,30 @@ function FeaturedReview({ review }) {
             <h3 className="mb-0 mt-1 text-[1.16rem] leading-tight text-text">{albumTitle}</h3>
           )}
           <p className="mb-0 mt-1 text-[12px] text-muted">{artistName}</p>
-          <p className="mb-0 mt-1 text-[11px] text-muted">
-            {reviewerLabel(review)} -{' '}
+          <p className="mb-0 mt-1.5 text-[11px] text-muted">
+            {reviewerLabel(review)} <span className="mx-1 text-black/20">-</span>{' '}
             {formatRelativeTime(review?.latestActivityAt ?? review?.reviewedAt ?? review?.addedAt)}
             {rating ? ` - ${rating}/5` : ''}
           </p>
         </div>
       </div>
 
-      <p className="mb-0 mt-3 text-[13px] leading-6 text-slate-700" style={excerptClampStyle(3)}>
-        {excerpt}
-      </p>
+      <blockquote className="border-l border-black/12 pl-3.5">
+        <p
+          className="mb-0 font-serif text-[1.03rem] leading-7 text-slate-700"
+          style={excerptClampStyle(4)}
+        >
+          "{excerpt}"
+        </p>
+      </blockquote>
 
-      <div className="mt-3 flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted">
+      <div className="flex items-center justify-between gap-3 pt-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted">
         {albumPath ? (
           <Link to={albumPath} className="text-accent transition hover:text-accent-strong">
-            Read
+            Read review
           </Link>
         ) : (
-          <span className="text-muted">Review</span>
+          <span className="text-muted">Featured</span>
         )}
         <span className="inline-flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
@@ -149,25 +154,34 @@ function SecondaryReviewItem({ review }) {
   const albumTitle = review?.album?.title ?? 'Unknown album'
   const artistName = review?.album?.artistName ?? 'Unknown artist'
   const likeCount = Number(review?.engagement?.likeCount ?? 0)
+  const commentCount = Number(review?.engagement?.commentCount ?? 0)
+  const reviewedAt = formatRelativeTime(review?.latestActivityAt ?? review?.reviewedAt ?? review?.addedAt)
+
   const content = (
-    <div className="flex items-center gap-3 px-3 py-2.5">
+    <article className="grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 py-3">
       <CoverImage
         src={review?.album?.coverArtUrl || '/album/am.jpg'}
         alt={`${albumTitle} by ${artistName} cover`}
-        className="h-12 w-12 shrink-0 border border-black/10"
+        className="h-[52px] w-[52px] shrink-0 border border-black/10"
       />
       <div className="min-w-0 flex-1">
-        <p className="mb-0 truncate text-[13px] font-semibold text-text">{albumTitle}</p>
-        <p className="mb-0 truncate text-[11px] text-muted">{artistName}</p>
-        <p className="mb-0 mt-0.5 truncate text-[10px] text-muted">
-          {reviewerLabel(review)} -{' '}
-          {formatRelativeTime(review?.latestActivityAt ?? review?.reviewedAt ?? review?.addedAt)}
+        <p className="mb-0 truncate text-[13.5px] font-semibold text-text">{albumTitle}</p>
+        <p className="mb-0 mt-0.5 truncate text-[11px] text-muted">{artistName}</p>
+        <p className="mb-0 mt-1 truncate text-[10px] text-muted">
+          {reviewerLabel(review)} <span className="mx-1 text-black/20">-</span> {reviewedAt}
         </p>
       </div>
-      <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted">
-        {likeCount.toLocaleString()} likes
-      </span>
-    </div>
+      <div className="space-y-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+        <span className="inline-flex items-center gap-1">
+          <Heart size={10} weight="fill" className="text-accent" />
+          {likeCount.toLocaleString()}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <ChatCircle size={10} weight="bold" />
+          {commentCount.toLocaleString()}
+        </span>
+      </div>
+    </article>
   )
 
   if (!albumPath) {
@@ -195,18 +209,21 @@ export default function HomeMobileTrendingSection({
   const secondaryReviews = items.slice(1, 4)
 
   return (
-    <section className="space-y-3 border-t border-black/10 pt-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <section className="space-y-4 border-t border-black/10 pt-6">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
           <p className="mb-0 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
             <TrendUp size={12} className="text-accent" weight="bold" />
             Trending reviews
           </p>
-          <h2 className="mb-0 mt-1 text-[1.32rem] leading-tight text-text">Community pulse</h2>
+          <span className="inline-flex border border-black/10 bg-white/50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
+            {formatWindowLabel(windowDays)}
+          </span>
         </div>
-        <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
-          {formatWindowLabel(windowDays)}
-        </span>
+        <h2 className="mb-0 text-[1.32rem] leading-tight text-text">Community pulse</h2>
+        <p className="mb-0 text-[12px] leading-relaxed text-muted">
+          One featured review, plus more from the conversation.
+        </p>
       </div>
 
       {isLoading ? (
@@ -221,13 +238,18 @@ export default function HomeMobileTrendingSection({
         <>
           <FeaturedReview review={featuredReview} />
           {secondaryReviews.length ? (
-            <div className="overflow-hidden rounded-xl border border-black/8 bg-white/60">
-              {secondaryReviews.map((review, index) => (
-                <div key={review?.backlogId ?? `${review?.reviewer?.id ?? 'review'}-${index}`}>
-                  <SecondaryReviewItem review={review} />
-                  {index < secondaryReviews.length - 1 ? <div className="h-px bg-black/8" /> : null}
-                </div>
-              ))}
+            <div className="space-y-1 pt-1">
+              <p className="mb-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+                Also trending
+              </p>
+              <div className="divide-y divide-black/8">
+                {secondaryReviews.map((review, index) => (
+                  <SecondaryReviewItem
+                    key={review?.backlogId ?? `${review?.reviewer?.id ?? 'review'}-${index}`}
+                    review={review}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
         </>

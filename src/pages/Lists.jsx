@@ -1,6 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown,
   ArrowUp,
@@ -1695,7 +1695,9 @@ function MobileFeaturedStack({ mainFeatured, supportingFeatured, openList, total
 
 export default function Lists() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { isSignedIn, signOut } = useAuthStatus()
+  const handledListQueryRef = useRef('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [navUser, setNavUser] = useState(() => {
     const cached = readCachedProfile()
@@ -1731,6 +1733,8 @@ export default function Lists() {
   const [favoritePendingByList, setFavoritePendingByList] = useState({})
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false)
   const [shouldFocusCommentComposer, setShouldFocusCommentComposer] = useState(false)
+  const listIdFromQuery = String(searchParams.get('listId') ?? '').trim()
+  const focusFromQuery = String(searchParams.get('focus') ?? '').trim().toLowerCase() === 'comments'
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -1890,8 +1894,17 @@ export default function Lists() {
       setShouldFocusCommentComposer(Boolean(options?.focusComments))
       setCommentDraft('')
       setActiveListError('')
+
+      const nextSearchParams = new URLSearchParams(searchParams)
+      nextSearchParams.set('listId', listId)
+      if (options?.focusComments) {
+        nextSearchParams.set('focus', 'comments')
+      } else {
+        nextSearchParams.delete('focus')
+      }
+      setSearchParams(nextSearchParams, { replace: true })
     },
-    [listsPayload],
+    [listsPayload, searchParams, setSearchParams],
   )
 
   const focusCommentsForList = useCallback(
@@ -1900,6 +1913,18 @@ export default function Lists() {
     },
     [openList],
   )
+
+  useEffect(() => {
+    if (!listIdFromQuery) {
+      handledListQueryRef.current = ''
+      return
+    }
+
+    const token = `${listIdFromQuery}:${focusFromQuery ? 'comments' : 'view'}`
+    if (handledListQueryRef.current === token) return
+    handledListQueryRef.current = token
+    openList(listIdFromQuery, { focusComments: focusFromQuery })
+  }, [focusFromQuery, listIdFromQuery, openList])
 
   const toggleFavorite = async (listId) => {
     if (!isSignedIn) {
@@ -2414,6 +2439,10 @@ export default function Lists() {
           setActiveList(null)
           setShouldFocusCommentComposer(false)
           setCommentDraft('')
+          const nextSearchParams = new URLSearchParams(searchParams)
+          nextSearchParams.delete('listId')
+          nextSearchParams.delete('focus')
+          setSearchParams(nextSearchParams, { replace: true })
         }}
         onToggleFavorite={toggleFavorite}
         onAddComment={addComment}

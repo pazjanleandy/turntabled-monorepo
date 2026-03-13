@@ -55,6 +55,45 @@ const TRENDING_DEFAULT_LIMIT = 4;
 const TRENDING_MAX_LIMIT = 12;
 const TRENDING_INTERACTION_WINDOW_DAYS = 7;
 const TRENDING_REVIEW_WINDOW_DAYS = 30;
+const GRAMMY_WINNER_YEAR = 2026;
+const GRAMMY_WINNERS_2026 = [
+  {
+    albumTitle: "DeB\u00CD TiRAR M\u00E1S FOToS",
+    artistName: "Bad Bunny",
+    category: "Album of the Year",
+    titleAliases: ["Debi Tirar Mas Fotos"],
+  },
+  {
+    albumTitle: "MAYHEM",
+    artistName: "Lady Gaga",
+    category: "Best Pop Vocal Album",
+  },
+  {
+    albumTitle: "GNX",
+    artistName: "Kendrick Lamar",
+    category: "Best Rap Album",
+  },
+  {
+    albumTitle: "NEVER ENOUGH",
+    artistName: "Turnstile",
+    category: "Best Rock Album",
+  },
+  {
+    albumTitle: "Songs Of A Lost World",
+    artistName: "The Cure",
+    category: "Best Alternative Music Album",
+  },
+  {
+    albumTitle: "EUSEXUA",
+    artistName: "FKA twigs",
+    category: "Best Dance/Electronic Album",
+  },
+  {
+    albumTitle: "Beautifully Broken",
+    artistName: "Jelly Roll",
+    category: "Best Contemporary Country Album",
+  },
+];
 
 function getTimestampMs(value) {
   if (!value) return 0;
@@ -125,6 +164,12 @@ function calculateTrendingReviewScore({
   return Number(score.toFixed(3));
 }
 
+function resolveExploreCatalogSort(filter = "") {
+  if (filter === "a-z") return "title-asc";
+  if (filter === "z-a") return "title-desc";
+  return "latest-desc";
+}
+
 export class ExploreService {
   constructor({
     backlogRepository,
@@ -146,17 +191,67 @@ export class ExploreService {
     this.supabaseUrl = supabaseUrl;
   }
 
-  async getExplorePage(userId, page, limit) {
-    const { rows, total } = await this.albumRepository.findLatestForExplore(page, limit);
+  async getExplorePage(userId, page, limit, options = {}) {
+    const sort = resolveExploreCatalogSort(options?.filter);
+    const { rows, total } = await this.albumRepository.findLatestForExplore(page, limit, { sort });
     const resultItems = rows.map((row) => mapExploreAlbumItem(row));
 
     return {
       page,
       limit,
       scope: "catalog",
+      sort,
       total,
       hydrationPendingCount: 0,
       items: resultItems,
+    };
+  }
+
+  async getGrammyWinners2026() {
+    const winners = await Promise.all(
+      GRAMMY_WINNERS_2026.map(async (entry) => {
+        const artist = await this.artistRepository.findByNormalizedName(entry.artistName);
+        if (!artist?.id) return null;
+
+        let album = null;
+        const candidateTitles = [entry.albumTitle].concat(
+          Array.isArray(entry.titleAliases) ? entry.titleAliases : []
+        );
+        for (const candidateTitle of candidateTitles) {
+          album = await this.albumRepository.findByNormalized(artist.id, candidateTitle);
+          if (album?.id) break;
+        }
+        if (!album?.id) return null;
+
+        const coverArtUrl =
+          album?.cover_art_url ??
+          (album?.mbid ? `https://coverartarchive.org/release/${album.mbid}/front-500` : null);
+
+        return {
+          awardYear: GRAMMY_WINNER_YEAR,
+          category: entry.category,
+          album: {
+            id: album.id,
+            title: album?.title ?? entry.albumTitle,
+            coverArtUrl,
+            releaseDate: album?.release_date ?? null,
+            primaryType: album?.primary_type ?? null,
+          },
+          artist: {
+            id: artist.id,
+            name: album?.artist?.name ?? artist?.name ?? entry.artistName,
+            normalizedName: album?.artist?.normalized_name ?? artist?.normalized_name ?? null,
+          },
+        };
+      })
+    );
+
+    const items = winners.filter(Boolean);
+    return {
+      scope: "grammy-winners-2026",
+      awardYear: GRAMMY_WINNER_YEAR,
+      total: items.length,
+      items,
     };
   }
 

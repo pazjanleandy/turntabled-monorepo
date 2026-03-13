@@ -62,6 +62,14 @@ export function getListsEnv() {
   };
 }
 
+export function getNotificationsEnv() {
+  return {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    SUPABASE_URL: requireEnv("SUPABASE_URL"),
+    SUPABASE_SERVICE_ROLE_KEY: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+}
+
 export function getLastFmEnv() {
   return {
     NODE_ENV: process.env.NODE_ENV ?? "development",

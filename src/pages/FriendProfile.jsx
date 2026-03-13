@@ -6,10 +6,8 @@ import FavoritesSection from '../components/profile/FavoritesSection.jsx'
 import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import MobileProfileMediaSection from '../components/profile/MobileProfileMediaSection.jsx'
-import MobileSocialSection from '../components/profile/MobileSocialSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
-import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
 import HomeMobileHeader from '../components/home/HomeMobileHeader.jsx'
@@ -26,9 +24,7 @@ import {
 import useAlbumCovers from '../hooks/useAlbumCovers.js'
 import useAlbumRatings from '../hooks/useAlbumRatings.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
-import useFriendActivity from '../hooks/useFriendActivity.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
-import { mapFriendActivityFeed } from '../lib/friendActivityFeed.jsx'
 import { readCachedProfile } from '../lib/profileClient.js'
 import {
   fetchFollowStateWithUser,
@@ -211,12 +207,6 @@ function mapReviews(items = []) {
 export default function FriendProfile() {
   const navigate = useNavigate()
   const { isSignedIn, signOut } = useAuthStatus()
-  const {
-    activities: friendActivities,
-    isLoading: isFriendActivityLoading,
-    error: friendActivityError,
-    hasFriends,
-  } = useFriendActivity({ isSignedIn, limit: 18 })
   const { friendSlug } = useParams()
   const targetIdentifier = friendSlug ?? ''
   const cachedProfile = readCachedProfile()
@@ -564,10 +554,6 @@ export default function FriendProfile() {
       },
     ]
   }, [payload])
-  const friendActivityRows = useMemo(
-    () => mapFriendActivityFeed(friendActivities),
-    [friendActivities],
-  )
   const hasLastFmConnection = Boolean(
     typeof payload?.user?.lastfmUsername === 'string' && payload.user.lastfmUsername.trim(),
   )
@@ -575,7 +561,7 @@ export default function FriendProfile() {
   const renderScaffold = (content) => (
     <div className="min-h-screen">
       <div className="md:hidden">
-        <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} />
+        <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} isSignedIn={isSignedIn} />
       </div>
       <div className="md:hidden">
         <HomeMobileSidebar
@@ -590,7 +576,7 @@ export default function FriendProfile() {
       <div className="mx-auto w-full max-w-[430px] px-4 pb-8 pt-0 sm:px-5 md:max-w-6xl md:px-6 md:py-6 lg:px-8">
         <div className="space-y-0 md:space-y-6">
           <div className="hidden md:block">
-            <Navbar className="mx-auto w-[min(100%,900px)]" />
+            <Navbar className="mx-auto w-[min(100%,1080px)]" />
           </div>
           {content}
         </div>
@@ -762,32 +748,10 @@ export default function FriendProfile() {
         </section>
 
         <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
-          <MobileSocialSection
-            friends={[]}
-            activity={friendActivityRows}
-            isActivityLoading={isFriendActivityLoading}
-            activityError={friendActivityError}
-            hasFriends={hasFriends}
-            emptyActivityMessage="No friend activity yet. Add friends to see their music activity."
-          />
-          <div className="hidden md:block">
-            <RecentActivitySection
-              activity={friendActivityRows}
-              isLoading={isFriendActivityLoading}
-              error={friendActivityError}
-              emptyMessage={
-                hasFriends
-                  ? 'No friend activity yet.'
-                  : 'No friend activity yet. Add friends to see their music activity.'
-              }
-            />
-          </div>
-        </section>
-
-        <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
           <ProfileCTA asCard={false} compactMobile />
         </section>
       </div>
     </main>,
   )
 }
+

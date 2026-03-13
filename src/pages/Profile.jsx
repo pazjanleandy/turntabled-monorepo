@@ -7,24 +7,18 @@ import ReviewModal from '../components/album/ReviewModal.jsx'
 import EditProfileModal from '../components/profile/EditProfileModal.jsx'
 import FavoritesSection from '../components/profile/FavoritesSection.jsx'
 import FavoritesReorderModal from '../components/profile/FavoritesReorderModal.jsx'
-import FriendsSection from '../components/profile/FriendsSection.jsx'
 import LastFmRecentTracks from '../components/profile/LastFmRecentTracks.jsx'
 import LatestLogsSection from '../components/profile/LatestLogsSection.jsx'
 import MobileProfileMediaSection from '../components/profile/MobileProfileMediaSection.jsx'
-import MobileSocialSection from '../components/profile/MobileSocialSection.jsx'
 import ProfileCTA from '../components/profile/ProfileCTA.jsx'
 import ProfileHeader from '../components/profile/ProfileHeader.jsx'
-import RecentActivitySection from '../components/RecentActivitySection.jsx'
 import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
 import HomeMobileHeader from '../components/home/HomeMobileHeader.jsx'
 import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
 import { profileUser } from '../data/profileData.js'
 import useAuthStatus from '../hooks/useAuthStatus.js'
-import useFriendActivity from '../hooks/useFriendActivity.js'
-import useFriendsData from '../hooks/useFriendsData.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
-import { mapFriendActivityFeed } from '../lib/friendActivityFeed.jsx'
 import {
   PROFILE_EVENT_NAME,
   fetchCurrentProfile,
@@ -247,13 +241,6 @@ function mapApiSocialCounts(profilePayload) {
 export default function Profile() {
   const navigate = useNavigate()
   const { isSignedIn, signOut } = useAuthStatus()
-  const {
-    activities: friendActivities,
-    isLoading: isFriendActivityLoading,
-    error: friendActivityError,
-    hasFriends,
-  } = useFriendActivity({ isSignedIn, limit: 24 })
-  const { friends: linkedFriends } = useFriendsData({ isSignedIn })
   const cachedProfile = readCachedProfile()
   const [profileView, setProfileView] = useState(() => ({
     user: {
@@ -274,23 +261,6 @@ export default function Profile() {
   const [reviewList, setReviewList] = useState([])
   const favorites = profileFavorites
   const recent = recentActivityLogs
-  const friendsList = useMemo(
-    () =>
-      linkedFriends.map((row) => {
-        const username = row?.friend?.username || 'unknown'
-        const handle = `@${String(username).replace(/^@/, '')}`
-        return {
-          handle,
-          slug: row?.friend?.id || username,
-          name: username,
-          initials: username.slice(0, 2).toUpperCase() || 'U',
-          avatarUrl: row?.friend?.avatarUrl || '',
-          note: row?.friend?.bio || 'Friend',
-          activity: 'Friend',
-        }
-      }),
-    [linkedFriends],
-  )
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [lastfmUsername, setLastfmUsername] = useState('')
@@ -866,11 +836,6 @@ export default function Profile() {
     }
   }
 
-  const friendActivityRows = useMemo(
-    () => mapFriendActivityFeed(friendActivities),
-    [friendActivities],
-  )
-
   const navUser = useMemo(
     () => ({
       username: String(user?.handle ?? '').replace(/^@/, ''),
@@ -891,7 +856,7 @@ export default function Profile() {
   return (
     <div className="min-h-screen">
       <div className="md:hidden">
-        <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} />
+        <HomeMobileHeader onOpenMenu={openSidebar} navUser={navUser} isSignedIn={isSignedIn} />
       </div>
       <div className="md:hidden">
         <HomeMobileSidebar
@@ -906,7 +871,7 @@ export default function Profile() {
       <div className="mx-auto w-full max-w-[430px] px-4 pb-8 pt-0 sm:px-5 md:max-w-6xl md:px-6 md:py-6 lg:px-8">
         <div className="space-y-0 md:space-y-6">
           <div className="hidden md:block">
-            <Navbar className="mx-auto w-[min(100%,900px)]" />
+            <Navbar className="mx-auto w-[min(100%,1080px)]" />
           </div>
 
           <main className="overflow-visible rounded-none border-0 bg-transparent shadow-none md:overflow-hidden md:rounded-3xl md:border md:border-[var(--border)] md:bg-[var(--card)] md:backdrop-blur-md md:shadow-sm">
@@ -1005,9 +970,6 @@ export default function Profile() {
                       <LatestLogsSection recent={recent} asCard={false} />
                     </div>
                     <div className="hidden md:block">
-                      <FriendsSection friends={friendsList} asCard={false} />
-                    </div>
-                    <div className="hidden md:block">
                       <LastFmRecentTracks
                         username={lastfmUsername}
                         tracks={recentTracks}
@@ -1017,29 +979,6 @@ export default function Profile() {
                       />
                     </div>
                   </aside>
-                </div>
-              </section>
-
-              <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
-                <MobileSocialSection
-                  friends={friendsList}
-                  activity={friendActivityRows}
-                  isActivityLoading={isFriendActivityLoading}
-                  activityError={friendActivityError}
-                  hasFriends={hasFriends}
-                  emptyActivityMessage="No friend activity yet. Add friends to see their music activity."
-                />
-                <div className="hidden md:block">
-                  <RecentActivitySection
-                    activity={friendActivityRows}
-                    isLoading={isFriendActivityLoading}
-                    error={friendActivityError}
-                    emptyMessage={
-                      hasFriends
-                        ? 'No friend activity yet.'
-                        : 'No friend activity yet. Add friends to see their music activity.'
-                    }
-                  />
                 </div>
               </section>
 
@@ -1085,3 +1024,4 @@ export default function Profile() {
     </div>
   )
 }
+

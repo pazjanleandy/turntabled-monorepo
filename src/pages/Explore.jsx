@@ -81,17 +81,9 @@ export default function Explore() {
   })
   const [apiAlbums, setApiAlbums] = useState([])
   const [totalAlbums, setTotalAlbums] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
-  const [currentFetchPage, setCurrentFetchPage] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const lastFetchAtRef = useRef(0)
-  const authEpochRef = useRef(0)
-  const fetchedPageSetRef = useRef(new Set())
-  const fetchingPageSetRef = useRef(new Set())
-  const fetchedIdSetRef = useRef(new Set())
-  const hasMoreRef = useRef(true)
-  const currentFetchPageRef = useRef(0)
+  const activeRequestIdRef = useRef(0)
   const fallbackFilter = FILTER_OPTIONS[0]?.value ?? 'a-z'
   const activeFilter = searchParams.get('filter') ?? fallbackFilter
   const activePage = parsePositiveInt(searchParams.get('page'), 1)
@@ -203,153 +195,84 @@ export default function Explore() {
   }, [])
 
   const resetExploreState = useCallback(() => {
+    activeRequestIdRef.current += 1
     setApiAlbums([])
     setTotalAlbums(0)
-    setHasMore(true)
-    setCurrentFetchPage(0)
     setIsLoading(false)
     setLoadError('')
-    fetchedPageSetRef.current.clear()
-    fetchingPageSetRef.current.clear()
-    fetchedIdSetRef.current.clear()
-    hasMoreRef.current = true
-    currentFetchPageRef.current = 0
   }, [])
 
-  const fetchExplorePage = useCallback(async (page) => {
-    if (!isSignedIn) return { fetched: false, reason: 'signed-out' }
-    if (!Number.isInteger(page) || page < 1) return { fetched: false, reason: 'invalid-page' }
-    if (fetchedPageSetRef.current.has(page)) return { fetched: false, reason: 'already-fetched' }
-    if (fetchingPageSetRef.current.has(page)) return { fetched: false, reason: 'already-fetching' }
-    if (!hasMoreRef.current && page > currentFetchPageRef.current + 1) {
-      return { fetched: false, reason: 'no-more' }
-    }
-
-    const runEpoch = authEpochRef.current
-    fetchingPageSetRef.current.add(page)
-    setIsLoading(true)
-
-    try {
-      const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
-      const username = window.localStorage.getItem('lastfmUsername')
-      const headers = {}
-      const { data } = await supabase.auth.getSession()
-      const userId = data?.session?.user?.id
-
-      if (userId) {
-        headers['x-user-id'] = userId
-      }
-      if (username) {
-        headers['x-username'] = username
-      }
-
-      const minIntervalMs = 500
-      const elapsedMs = Date.now() - lastFetchAtRef.current
-      if (elapsedMs < minIntervalMs) {
-        await new Promise((resolve) => {
-          setTimeout(resolve, minIntervalMs - elapsedMs)
-        })
-      }
-
-      const response = await fetch(`${apiBase}/api/explore?page=${page}&limit=${PAGE_SIZE}`, {
-        headers,
-      })
-      lastFetchAtRef.current = Date.now()
-
-      if (!response.ok) {
-        throw new Error('Failed to load explore albums.')
-      }
-
-      const payload = await response.json()
-      const items = Array.isArray(payload?.items) ? payload.items : []
-      const mappedItems = items.map(mapApiAlbum).filter(Boolean)
-      const total = Number(payload?.total)
-      const safeTotal = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
-      const totalPagesFromApi = Math.max(1, Math.ceil(safeTotal / PAGE_SIZE))
-      const nextHasMore = page < totalPagesFromApi
-
-      if (runEpoch !== authEpochRef.current) {
-        return { fetched: false, reason: 'stale-run' }
-      }
-
-      setTotalAlbums(safeTotal)
-      setHasMore(nextHasMore)
-      setCurrentFetchPage((prev) => Math.max(prev, page))
-      setApiAlbums((prev) => {
-        // Merge by id to prevent duplicate cards when pages overlap in dev/strict reruns.
-        const byId = new Map()
-        for (const album of prev) {
-          if (!album?.id) continue
-          byId.set(album.id, album)
-        }
-        for (const album of mappedItems) {
-          if (!album?.id) continue
-          byId.set(album.id, album)
-          fetchedIdSetRef.current.add(album.id)
-        }
-        return Array.from(byId.values())
-      })
-
-      fetchedPageSetRef.current.add(page)
-      currentFetchPageRef.current = Math.max(currentFetchPageRef.current, page)
-      hasMoreRef.current = nextHasMore
-      setLoadError('')
-      return { fetched: true }
-    } catch (error) {
-      if (runEpoch !== authEpochRef.current) {
-        return { fetched: false, reason: 'stale-run' }
-      }
-      setLoadError(error?.message ?? 'Unable to load albums.')
-      return { fetched: false, reason: 'error' }
-    } finally {
-      fetchingPageSetRef.current.delete(page)
-      if (fetchingPageSetRef.current.size === 0) {
-        setIsLoading(false)
-      }
-    }
-  }, [isSignedIn, mapApiAlbum])
-
   useEffect(() => {
-    authEpochRef.current += 1
-    const currentAuthEpoch = authEpochRef.current
-
     if (!isSignedIn) {
       resetExploreState()
       return undefined
     }
 
-    // Reset + bootstrap per auth epoch. In Strict Mode dev, the first run is
-    // invalidated by authEpoch and the second run becomes the authoritative fetch.
-    resetExploreState()
-
-    let cancelled = false
-    const bootstrap = async () => {
-      if (cancelled || currentAuthEpoch !== authEpochRef.current) return
-      await fetchExplorePage(1)
-    }
-    bootstrap()
-
-    return () => {
-      cancelled = true
-    }
-  }, [isSignedIn, fetchExplorePage, resetExploreState])
-
-  useEffect(() => {
-    if (!isSignedIn) return undefined
+    const requestId = activeRequestIdRef.current + 1
+    activeRequestIdRef.current = requestId
+    const controller = new AbortController()
     let cancelled = false
 
-    const ensurePageLoaded = async () => {
-      for (let page = 1; page <= activePage; page += 1) {
-        if (cancelled) return
-        await fetchExplorePage(page)
+    const loadPage = async () => {
+      setIsLoading(true)
+      setLoadError('')
+      setApiAlbums([])
+      try {
+        const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+        const username = window.localStorage.getItem('lastfmUsername')
+        const headers = {}
+        const { data } = await supabase.auth.getSession()
+        const userId = data?.session?.user?.id
+
+        if (userId) {
+          headers['x-user-id'] = userId
+        }
+        if (username) {
+          headers['x-username'] = username
+        }
+
+        const normalizedFilter = String(activeFilter || fallbackFilter).trim().toLowerCase() || fallbackFilter
+        const response = await fetch(
+          `${apiBase}/api/explore?page=${activePage}&limit=${PAGE_SIZE}&filter=${encodeURIComponent(normalizedFilter)}`,
+          {
+          headers,
+          signal: controller.signal,
+          },
+        )
+        if (!response.ok) {
+          throw new Error('Failed to load explore albums.')
+        }
+
+        const payload = await response.json()
+        if (cancelled || controller.signal.aborted || requestId !== activeRequestIdRef.current) return
+
+        const items = Array.isArray(payload?.items) ? payload.items : []
+        const mappedItems = items.map(mapApiAlbum).filter(Boolean)
+        const total = Number(payload?.total)
+        const safeTotal = Number.isFinite(total) && total >= 0 ? Math.floor(total) : 0
+
+        setApiAlbums(mappedItems)
+        setTotalAlbums(safeTotal)
+        setLoadError('')
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        if (cancelled || requestId !== activeRequestIdRef.current) return
+        setApiAlbums([])
+        setLoadError(error?.message ?? 'Unable to load albums.')
+      } finally {
+        if (!cancelled && requestId === activeRequestIdRef.current) {
+          setIsLoading(false)
+        }
       }
     }
 
-    ensurePageLoaded()
+    loadPage()
+
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [isSignedIn, activePage, fetchExplorePage])
+  }, [isSignedIn, activePage, activeFilter, fallbackFilter, mapApiAlbum, resetExploreState])
 
   useEffect(() => {
     const nextGenre = normalizeGenreKey(activeGenreParam) || 'all'
@@ -417,6 +340,7 @@ export default function Explore() {
 
   const visibleAlbums = useMemo(() => {
     const term = query.trim().toLowerCase()
+    const hasInlineClientFilters = term.length > 0 || decadeFilter !== 'all' || genreFilter !== 'all'
     const filtered = albums.filter((item) => {
       if (
         term &&
@@ -443,9 +367,9 @@ export default function Explore() {
     })
 
     const sorted = [...filtered]
-    if (activeFilter === 'a-z') {
+    if (activeFilter === 'a-z' && hasInlineClientFilters) {
       sorted.sort((a, b) => a.title.localeCompare(b.title))
-    } else if (activeFilter === 'z-a') {
+    } else if (activeFilter === 'z-a' && hasInlineClientFilters) {
       sorted.sort((a, b) => b.title.localeCompare(a.title))
     } else if (activeFilter === 'popular-year') {
       sorted.sort((a, b) => Number(b.year) - Number(a.year))
@@ -460,37 +384,11 @@ export default function Explore() {
     genreFilter !== 'all'
 
   const totalPages = useMemo(
-    () =>
-      Math.max(
-        1,
-        Math.ceil((hasClientFilters ? visibleAlbums.length : totalAlbums) / PAGE_SIZE),
-      ),
-    [hasClientFilters, visibleAlbums.length, totalAlbums]
+    () => (hasClientFilters ? 1 : Math.max(1, Math.ceil(totalAlbums / PAGE_SIZE))),
+    [hasClientFilters, totalAlbums]
   )
-
-  const paginatedVisibleAlbums = useMemo(() => {
-    const start = (activePage - 1) * PAGE_SIZE
-    return visibleAlbums.slice(start, start + PAGE_SIZE)
-  }, [visibleAlbums, activePage])
-
-  useEffect(() => {
-    if (!isSignedIn || !hasClientFilters || !hasMore) return undefined
-    let cancelled = false
-
-    const hydrateRemainingCatalog = async () => {
-      let nextPage = currentFetchPage + 1
-      while (!cancelled && hasMoreRef.current) {
-        const result = await fetchExplorePage(nextPage)
-        if (!result?.fetched) break
-        nextPage += 1
-      }
-    }
-
-    hydrateRemainingCatalog()
-    return () => {
-      cancelled = true
-    }
-  }, [isSignedIn, hasClientFilters, hasMore, currentFetchPage, fetchExplorePage])
+  const paginatedVisibleAlbums = visibleAlbums
+  const displayAlbumCount = hasClientFilters ? visibleAlbums.length : totalAlbums
 
   useEffect(() => {
     if (!hasClientFilters && totalAlbums === 0 && isLoading) return
@@ -768,9 +666,9 @@ export default function Explore() {
         <div className="space-y-4 md:space-y-5">
           <div className="hidden md:block">
             {isSignedIn ? (
-              <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+              <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
             ) : (
-              <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+              <NavbarGuest className="mx-auto mt-6 w-[min(100%,1080px)]" />
             )}
           </div>
 
@@ -920,7 +818,7 @@ export default function Explore() {
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2 md:gap-3">
                 <span className="rounded-full bg-black/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted md:rounded-none md:bg-transparent md:px-0 md:py-0 md:text-xs md:tracking-[0.25em]">
-                  {visibleAlbums.length} album{visibleAlbums.length === 1 ? '' : 's'}
+                  {displayAlbumCount} album{displayAlbumCount === 1 ? '' : 's'}
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted md:text-xs md:tracking-[0.25em]">
                   Page {activePage} of {totalPages}
@@ -1012,4 +910,5 @@ export default function Explore() {
     </div>
   )
 }
+
 

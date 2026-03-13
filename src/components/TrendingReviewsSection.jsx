@@ -166,77 +166,12 @@ function EngagementInline({ likeCount, commentCount, compact = false, className 
   )
 }
 
-function TopCommentsPreview({ comments = [], compact = false }) {
-  const commentItems = (Array.isArray(comments) ? comments : [])
-    .filter((comment) => typeof comment?.commentText === 'string' && comment.commentText.trim())
-    .slice(0, 2)
-
-  if (commentItems.length === 0) return null
-
-  const avatarSizeClass = compact ? 'h-5 w-5' : 'h-6 w-6'
-  const avatarTextClass = compact ? 'text-[8px]' : 'text-[9px]'
-  const bodyTextClass = compact ? 'text-[11px] leading-5' : 'text-xs leading-6'
-  const clampLines = compact ? 1 : 2
-
-  return (
-    <div className={`${compact ? 'mt-2' : 'mt-3'} border-l border-black/10 pl-3`}>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
-        Top comments
-      </p>
-      <div className="space-y-1.5">
-        {commentItems.map((comment, index) => {
-          const username = comment?.user?.username ?? 'unknown-user'
-          const profilePath = buildProfilePathFromUsername(username)
-          const displayLabel = `@${String(username).replace(/^@/, '')}`
-          const avatarUrl = comment?.user?.avatarUrl
-          return (
-            <div
-              key={comment?.id ?? `${username}-${comment?.createdAt ?? ''}-${index}`}
-              className="flex items-start gap-2"
-            >
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={`${displayLabel} avatar`}
-                  className={`${avatarSizeClass} rounded-none object-cover`}
-                />
-              ) : (
-                <span
-                  className={`inline-flex ${avatarSizeClass} items-center justify-center rounded-none bg-accent/12 ${avatarTextClass} font-semibold uppercase text-accent`}
-                >
-                  {createInitials(username)}
-                </span>
-              )}
-
-              <p className={`mb-0 min-w-0 ${bodyTextClass} text-slate-700`} style={excerptClampStyle(clampLines)}>
-                {profilePath ? (
-                  <Link
-                    to={profilePath}
-                    onClick={stopCardNavigation}
-                    className="mr-1 font-semibold text-text transition hover:text-accent"
-                  >
-                    {displayLabel}
-                  </Link>
-                ) : (
-                  <span className="mr-1 font-semibold text-text">{displayLabel}</span>
-                )}
-                {comment.commentText.trim()}
-              </p>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 function FeaturedTrendingReview({ review }) {
   const navigate = useNavigate()
   const albumPath = buildAlbumReviewPath(review)
   const albumTitle = review?.album?.title ?? 'Unknown album'
   const artistName = review?.album?.artistName ?? 'Unknown artist'
   const excerpt = review?.previewText || review?.reviewText || 'No preview available yet.'
-  const interactionCount = Number(review?.engagement?.interactionCount ?? 0)
   const likeCount = Number(review?.engagement?.likeCount ?? 0)
   const commentCount = Number(review?.engagement?.commentCount ?? 0)
 
@@ -254,28 +189,25 @@ function FeaturedTrendingReview({ review }) {
 
   return (
     <article
-      className={albumPath ? 'cursor-pointer' : ''}
+      className={albumPath ? 'flex h-full cursor-pointer flex-col' : 'flex h-full flex-col'}
       onClick={handleActivate}
       onKeyDown={handleKeyDown}
       role={albumPath ? 'link' : undefined}
       tabIndex={albumPath ? 0 : -1}
     >
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">Featured</span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
-          {interactionCount.toLocaleString()} interactions
-        </span>
-      </div>
+      <p className="mb-0 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">
+        Featured excerpt
+      </p>
 
-      <div className="mt-3 grid gap-4 sm:grid-cols-[124px_minmax(0,1fr)] lg:gap-5">
+      <div className="mt-3 grid gap-3.5 sm:grid-cols-[108px_minmax(0,1fr)] lg:gap-4">
         <div className="self-start">
           {albumPath ? (
-            <Link to={albumPath} onClick={stopCardNavigation} className="block w-[min(62vw,220px)] sm:w-[124px]">
+            <Link to={albumPath} onClick={stopCardNavigation} className="block w-[min(56vw,190px)] sm:w-[108px]">
               <CoverImage
                 src={review?.album?.coverArtUrl || '/album/am.jpg'}
                 alt={`${albumTitle} by ${artistName} cover`}
                 rounded={false}
-                className="h-[min(62vw,220px)] w-[min(62vw,220px)] border border-black/10 shadow-[0_14px_24px_-20px_rgba(15,15,15,0.3)] sm:h-[124px] sm:w-[124px]"
+                className="h-[min(56vw,190px)] w-[min(56vw,190px)] border border-black/10 shadow-[0_14px_24px_-20px_rgba(15,15,15,0.3)] sm:h-[108px] sm:w-[108px]"
               />
             </Link>
           ) : (
@@ -283,42 +215,45 @@ function FeaturedTrendingReview({ review }) {
               src={review?.album?.coverArtUrl || '/album/am.jpg'}
               alt={`${albumTitle} by ${artistName} cover`}
               rounded={false}
-              className="h-[min(62vw,220px)] w-[min(62vw,220px)] border border-black/10 shadow-[0_14px_24px_-20px_rgba(15,15,15,0.3)] sm:h-[124px] sm:w-[124px]"
+              className="h-[min(56vw,190px)] w-[min(56vw,190px)] border border-black/10 shadow-[0_14px_24px_-20px_rgba(15,15,15,0.3)] sm:h-[108px] sm:w-[108px]"
             />
           )}
         </div>
 
         <div className="min-w-0">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Trending review
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Community review
           </p>
           {albumPath ? (
             <Link
               to={albumPath}
               onClick={stopCardNavigation}
-              className="block text-[1.45rem] leading-[1.05] text-text transition hover:text-accent sm:text-[1.85rem]"
+              className="block text-[1.28rem] leading-[1.05] text-text transition hover:text-accent sm:text-[1.62rem]"
             >
               {albumTitle}
             </Link>
           ) : (
-            <h3 className="mb-0 text-[1.45rem] leading-[1.05] text-text sm:text-[1.85rem]">{albumTitle}</h3>
+            <h3 className="mb-0 text-[1.28rem] leading-[1.05] text-text sm:text-[1.62rem]">{albumTitle}</h3>
           )}
-          <p className="mb-0 mt-1.5 text-sm text-muted">{artistName}</p>
+          <p className="mb-0 mt-1 text-[13px] text-muted">{artistName}</p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
             <ReviewerIdentity review={review} />
             <ReviewRating rating={review?.rating} />
           </div>
-
-          <p className="mb-0 mt-3 text-[14px] leading-7 text-slate-700" style={excerptClampStyle(5)}>
-            {excerpt}
-          </p>
-
-          <TopCommentsPreview comments={review?.topComments} />
-
-          <EngagementInline likeCount={likeCount} commentCount={commentCount} className="mt-3" />
         </div>
       </div>
+
+      <blockquote className="mt-5 flex-1 border-l border-black/12 pl-4 sm:pl-5 xl:mt-6">
+        <p
+          className="mb-0 max-w-[40ch] font-serif text-[1.12rem] leading-[2.05rem] text-slate-700 sm:text-[1.2rem] sm:leading-[2.15rem]"
+          style={excerptClampStyle(4)}
+        >
+          "{excerpt}"
+        </p>
+      </blockquote>
+
+      <EngagementInline likeCount={likeCount} commentCount={commentCount} className="mt-6" />
     </article>
   )
 }
@@ -346,25 +281,25 @@ function TrendingReviewRow({ review, rank }) {
 
   return (
     <article
-      className={albumPath ? 'group cursor-pointer py-4 first:pt-0 last:pb-0' : 'group py-4 first:pt-0 last:pb-0'}
+      className={albumPath ? 'group cursor-pointer py-4.5 first:pt-0 last:pb-0' : 'group py-4.5 first:pt-0 last:pb-0'}
       onClick={handleActivate}
       onKeyDown={handleKeyDown}
       role={albumPath ? 'link' : undefined}
       tabIndex={albumPath ? 0 : -1}
     >
-      <div className="grid gap-3 sm:grid-cols-[24px_60px_minmax(0,1fr)] lg:grid-cols-[24px_60px_minmax(0,1fr)_auto] lg:gap-4">
+      <div className="grid gap-2.5 sm:grid-cols-[24px_52px_minmax(0,1fr)] lg:grid-cols-[24px_52px_minmax(0,1fr)_auto] lg:gap-3.5">
         <span className="pt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
           {String(rank).padStart(2, '0')}
         </span>
 
         <div className="self-start">
           {albumPath ? (
-            <Link to={albumPath} onClick={stopCardNavigation} className="block w-[60px]">
+            <Link to={albumPath} onClick={stopCardNavigation} className="block w-[52px]">
               <CoverImage
                 src={review?.album?.coverArtUrl || '/album/am.jpg'}
                 alt={`${albumTitle} by ${artistName} cover`}
                 rounded={false}
-                className="h-[60px] w-[60px] border border-black/10 shadow-[0_12px_20px_-18px_rgba(15,15,15,0.35)]"
+                className="h-[52px] w-[52px] border border-black/10 shadow-[0_12px_20px_-18px_rgba(15,15,15,0.35)]"
               />
             </Link>
           ) : (
@@ -372,7 +307,7 @@ function TrendingReviewRow({ review, rank }) {
               src={review?.album?.coverArtUrl || '/album/am.jpg'}
               alt={`${albumTitle} by ${artistName} cover`}
               rounded={false}
-              className="h-[60px] w-[60px] border border-black/10 shadow-[0_12px_20px_-18px_rgba(15,15,15,0.35)]"
+              className="h-[52px] w-[52px] border border-black/10 shadow-[0_12px_20px_-18px_rgba(15,15,15,0.35)]"
             />
           )}
         </div>
@@ -456,32 +391,26 @@ function LoadingState() {
   )
 }
 
-export default function TrendingReviewsSection({
-  reviews = [],
-  isLoading = false,
-  error = '',
-  windowDays = 7,
-}) {
+export default function TrendingReviewsSection({ reviews = [], isLoading = false, error = '', windowDays = 7 }) {
   const items = Array.isArray(reviews) ? reviews : []
   const featuredReview = items[0] ?? null
   const secondaryReviews = items.slice(1, 4)
 
   return (
-    <section className="card vinyl-texture !rounded-none p-4 sm:p-6 lg:p-7">
+    <section className="card vinyl-texture !rounded-none bg-card/78 p-4 sm:p-5 lg:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <div className="flex items-center gap-2">
-            <TrendUp size={18} weight="bold" className="text-accent" />
-            <p className="mb-0 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
+            <TrendUp size={16} weight="bold" className="text-accent" />
+            <p className="mb-0 text-[11px] font-semibold uppercase tracking-[0.23em] text-muted">
               Trending Reviews
             </p>
           </div>
-          <h2 className="mb-0 mt-2 text-[1.45rem] leading-tight text-text sm:text-[2rem]">
-            The most talked-about reviews in the community right now.
+          <h2 className="mb-0 mt-2 text-[1.25rem] leading-tight text-text sm:text-[1.62rem]">
+            Community discussion spotlight
           </h2>
-          <p className="mb-0 mt-3 max-w-2xl text-sm leading-7 text-muted">
-            Editorial picks powered by recent likes, comments, and overall review activity across
-            Turntabled.
+          <p className="mb-0 mt-2.5 max-w-2xl text-sm leading-6 text-muted">
+            One featured review and a small set of high-signal follow-ups.
           </p>
         </div>
 
@@ -502,21 +431,19 @@ export default function TrendingReviewsSection({
           reviews will appear in this section.
         </div>
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
           <FeaturedTrendingReview review={featuredReview} />
 
-          <div className="border-t border-black/6 pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="border-t border-black/5 pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+            <div className="mb-3 space-y-1">
               <p className="mb-0 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">
                 Also trending
               </p>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
-                {secondaryReviews.length} picks
-              </span>
+              <p className="mb-0 text-[12px] text-muted">More from the discussion right now.</p>
             </div>
 
             {secondaryReviews.length ? (
-              <div className="divide-y divide-black/7">
+              <div className="divide-y divide-black/6">
                 {secondaryReviews.map((review, index) => (
                   <TrendingReviewRow
                     key={review?.backlogId ?? `${review?.reviewer?.id ?? 'review'}-${index}`}

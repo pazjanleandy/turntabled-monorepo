@@ -4,7 +4,9 @@ import { ArrowRight, TrendUp } from 'phosphor-react'
 import CoverImage from './CoverImage.jsx'
 import { fetchPublishedLists } from '../lib/listsClient.js'
 
-const DESKTOP_SUPPORTING_LIMIT = 4
+const SUPPORTING_LIMIT = 2
+const HERO_COVER_LIMIT = 5
+const SUPPORTING_COVER_LIMIT = 4
 
 function statNumber(value) {
   return new Intl.NumberFormat('en-US').format(Math.max(0, Number(value) || 0))
@@ -72,25 +74,49 @@ function rankLists(rows = []) {
   })
 }
 
+function listHref(item) {
+  return `/lists?list=${encodeURIComponent(String(item?.id ?? ''))}`
+}
+
+function creatorHandle(creator) {
+  return typeof creator?.username === 'string' && creator.username.trim()
+    ? creator.username.trim()
+    : 'unknown'
+}
+
+function listConcept(item, moodIndex = 0) {
+  const description = typeof item?.description === 'string' ? item.description.trim() : ''
+  if (description) return description
+
+  const fallbacks = [
+    'A personality-led sequence of records designed to be played as one mood.',
+    'Built around a clear tone and listening narrative from start to finish.',
+    'A taste map for listeners chasing a specific atmosphere right now.',
+  ]
+
+  return fallbacks[moodIndex % fallbacks.length]
+}
+
+function clampText(value, maxLength = 120) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength - 1).trimEnd()}...`
+}
+
 function getListCovers(item, count) {
   const albums = Array.isArray(item?.albums) ? item.albums : []
   return albums.slice(0, count).map((album) => album?.cover ?? null)
 }
 
-function listHref(item) {
-  return `/lists?list=${encodeURIComponent(String(item?.id ?? ''))}`
-}
-
-function CreatorRow({ creator }) {
-  const username = typeof creator?.username === 'string' && creator.username.trim()
-    ? creator.username.trim()
-    : 'unknown'
+function CreatorIdentity({ creator, muted = false }) {
+  const username = creatorHandle(creator)
   const avatarUrl = typeof creator?.avatarUrl === 'string' ? creator.avatarUrl.trim() : ''
   const initials = username.slice(0, 2).toUpperCase() || 'U'
 
   return (
     <div className="inline-flex min-w-0 items-center gap-2">
-      <span className="relative inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-orange-500/20 bg-accent/15 text-[10px] font-bold uppercase text-accent">
+      <span className="relative inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-orange-500/20 bg-accent/15 text-[10px] font-bold uppercase text-accent">
         <span aria-hidden="true">{initials}</span>
         {avatarUrl ? (
           <img
@@ -103,198 +129,196 @@ function CreatorRow({ creator }) {
           />
         ) : null}
       </span>
-      <span className="truncate text-[12px] font-semibold text-text">@{username}</span>
+      <span className={`truncate text-[12px] font-semibold ${muted ? 'text-muted' : 'text-text'}`}>
+        @{username}
+      </span>
     </div>
   )
 }
 
-function ListMeta({ item, className = '' }) {
+function ListMeta({ item, compact = false, className = '' }) {
   const albumCount = Math.max(0, Number(item?.albumCount ?? item?.albums?.length ?? 0))
   const favorites = Math.max(0, Number(item?.favoriteCount ?? 0))
   const comments = Math.max(0, Number(item?.commentCount ?? 0))
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 text-[11px] text-muted ${className}`.trim()}>
+    <div
+      className={`flex flex-wrap items-center gap-2 ${compact ? 'text-[10px]' : 'text-[11px]'} text-muted ${className}`.trim()}
+    >
       <span>{statNumber(albumCount)} albums</span>
-      {favorites > 0 ? (
-        <>
-          <span className="inline-flex h-1 w-1 rounded-full bg-black/25" aria-hidden="true" />
-          <span>{statNumber(favorites)} favorites</span>
-        </>
-      ) : null}
-      {comments > 0 ? (
-        <>
-          <span className="inline-flex h-1 w-1 rounded-full bg-black/25" aria-hidden="true" />
-          <span>{statNumber(comments)} comments</span>
-        </>
-      ) : null}
+      <span className="inline-flex h-1 w-1 rounded-full bg-black/25" aria-hidden="true" />
+      <span>{statNumber(favorites)} favorites</span>
+      <span className="inline-flex h-1 w-1 rounded-full bg-black/25" aria-hidden="true" />
+      <span>{statNumber(comments)} comments</span>
     </div>
   )
 }
 
-function FeaturedCollage({ item }) {
-  const covers = getListCovers(item, 4)
-  const emptySlots = Math.max(0, 4 - covers.length)
-  const offsets = ['translate-y-0.5', 'translate-y-1.5', 'translate-y-1', 'translate-y-2']
+function CollageSlot({ cover, alt, className = '' }) {
+  return (
+    <div className={`overflow-hidden border border-black/10 bg-black/[0.03] ${className}`}>
+      {cover ? (
+        <CoverImage src={cover} alt={alt} className="h-full w-full" />
+      ) : (
+        <div className="h-full w-full border border-dashed border-black/10 bg-black/[0.03]" />
+      )}
+    </div>
+  )
+}
+
+function HeroCollage({ item }) {
+  const covers = getListCovers(item, HERO_COVER_LIMIT)
 
   return (
-    <div className="grid grid-cols-2 gap-2.5 border border-black/10 bg-black/[0.03] p-2.5">
-      {covers.map((src, index) => (
-        <div
-          key={`featured-cover-${item?.id}-${index}`}
-          className={`h-[4.5rem] w-[4.5rem] overflow-hidden border border-black/10 bg-black/5 shadow-subtle xl:h-[4.75rem] xl:w-[4.75rem] ${offsets[index % offsets.length]}`}
-        >
-          <CoverImage src={src} alt={`${item?.title ?? 'List'} album cover`} className="h-full w-full" />
-        </div>
-      ))}
-      {Array.from({ length: emptySlots }).map((_, index) => (
-        <div
-          key={`featured-empty-${item?.id}-${index}`}
-          className="h-[4.5rem] w-[4.5rem] border border-dashed border-black/10 bg-black/[0.03] xl:h-[4.75rem] xl:w-[4.75rem]"
-          aria-hidden="true"
+    <div className="relative w-full">
+      <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2">
+        <CollageSlot
+          cover={covers[0] ?? null}
+          alt={`${item?.title ?? 'List'} hero cover`}
+          className="h-[11.5rem] shadow-[0_16px_28px_-22px_rgba(15,23,42,0.7)] sm:h-[12.75rem]"
         />
-      ))}
+
+        <div className="grid grid-rows-[1fr_auto] gap-2">
+          <CollageSlot
+            cover={covers[1] ?? null}
+            alt={`${item?.title ?? 'List'} supporting cover`}
+            className="h-[6.8rem] translate-y-0.5 sm:h-[7.5rem]"
+          />
+          <div className="grid grid-cols-2 gap-2.5">
+            <CollageSlot
+              cover={covers[2] ?? null}
+              alt={`${item?.title ?? 'List'} supporting cover`}
+              className="h-[3.7rem] sm:h-[4rem]"
+            />
+            <CollageSlot
+              cover={covers[3] ?? null}
+              alt={`${item?.title ?? 'List'} supporting cover`}
+              className="h-[4rem] translate-y-0.5 sm:h-[4rem]"
+            />
+          </div>
+        </div>
+      </div>
+
+      {covers[4] ? (
+        <div className="absolute -bottom-2 left-3 h-12 w-12 overflow-hidden border border-black/14 bg-white/90 shadow-[0_14px_24px_-22px_rgba(15,23,42,0.7)] sm:-bottom-3 sm:left-4 sm:h-14 sm:w-14">
+          <CoverImage src={covers[4]} alt={`${item?.title ?? 'List'} extra cover`} className="h-full w-full" />
+        </div>
+      ) : null}
     </div>
   )
 }
 
 function SupportingCollage({ item }) {
-  const covers = getListCovers(item, 2)
-  const emptySlots = Math.max(0, 2 - covers.length)
+  const covers = getListCovers(item, SUPPORTING_COVER_LIMIT)
+  const offsets = ['translate-y-0', 'translate-y-1', 'translate-y-0', 'translate-y-1']
 
   return (
-    <div className="hidden items-center gap-2 lg:flex">
-      {covers.map((src, index) => (
+    <div className="flex items-center gap-1.5">
+      {Array.from({ length: SUPPORTING_COVER_LIMIT }).map((_, index) => (
         <div
-          key={`support-cover-${item?.id}-${index}`}
-          className="h-11 w-11 overflow-hidden border border-black/10 bg-black/5 xl:h-12 xl:w-12"
+          key={`${item?.id ?? 'list'}-support-cover-${index}`}
+          className={`h-10 w-10 overflow-hidden border border-black/10 bg-black/[0.03] sm:h-11 sm:w-11 ${offsets[index]}`}
         >
-          <CoverImage src={src} alt={`${item?.title ?? 'List'} album cover`} className="h-full w-full" />
+          {covers[index] ? (
+            <CoverImage
+              src={covers[index]}
+              alt={`${item?.title ?? 'List'} cover ${index + 1}`}
+              className="h-full w-full"
+            />
+          ) : (
+            <div className="h-full w-full border border-dashed border-black/10 bg-black/[0.03]" />
+          )}
         </div>
-      ))}
-      {Array.from({ length: emptySlots }).map((_, index) => (
-        <div
-          key={`support-empty-${item?.id}-${index}`}
-          className="h-11 w-11 border border-dashed border-black/10 bg-black/[0.03] xl:h-12 xl:w-12"
-          aria-hidden="true"
-        />
       ))}
     </div>
   )
 }
 
-function MobileListCard({ item, featured = false }) {
-  const primaryCover = getListCovers(item, 1)[0]
-  const secondaryCover = getListCovers(item, 2)[1]
+function HeroListShowcase({ item }) {
+  const concept = clampText(listConcept(item, 0), 190)
 
   return (
-    <article className={`w-full shrink-0 snap-center rounded-lg border border-black/5 bg-white/45 p-3 ${featured ? '' : ''}`}>
-      <div className="relative overflow-hidden rounded-md border border-black/5 bg-black/5">
-        <div className="aspect-[4/3] w-full">
-          {primaryCover ? (
-            <CoverImage src={primaryCover} alt={`${item.title} cover`} className="h-full w-full" />
-          ) : (
-            <div className="h-full w-full border border-dashed border-black/10 bg-black/[0.03]" />
-          )}
-        </div>
-        {secondaryCover ? (
-          <div className="absolute bottom-2 right-2 h-12 w-12 overflow-hidden rounded border border-black/10 bg-black/5 shadow-sm">
-            <CoverImage src={secondaryCover} alt={`${item.title} extra cover`} className="h-full w-full" />
+    <article className="relative overflow-hidden border border-black/10 bg-white/60 p-4 shadow-[0_20px_34px_-30px_rgba(15,23,42,0.62)] sm:p-5 lg:p-6">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[radial-gradient(circle,rgba(247,121,62,0.2),transparent_68%)]" />
+      <div className="relative grid gap-5 xl:grid-cols-[minmax(0,1fr)_16rem] xl:items-start">
+        <div className="space-y-3.5">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted/90">
+              Featured list
+            </span>
+            <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
+              {formatRelativeDate(item?.publishedAt ?? item?.createdAt)}
+            </span>
           </div>
-        ) : null}
-      </div>
-      <div className="mt-2 space-y-1.5">
-        <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted">
-          {formatRelativeDate(item.publishedAt ?? item.createdAt)}
-        </span>
-        <h4 className="mb-0 text-[16px] leading-tight text-text">{item.title}</h4>
-        <p className="mb-0 overflow-hidden text-[12px] leading-relaxed text-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-          {item.description || 'No description yet.'}
-        </p>
-        <CreatorRow creator={item.creator} />
-        <div className="flex items-center justify-between gap-3">
-          <ListMeta item={item} />
-          <Link
-            to={listHref(item)}
-            className="inline-flex items-center gap-1 text-[10.5px] font-semibold tracking-[0.08em] text-accent transition hover:text-[#ef6b2f]"
-          >
-            Open list
-            <ArrowRight size={11} weight="bold" />
-          </Link>
-        </div>
-      </div>
-    </article>
-  )
-}
 
-function DesktopFeaturedList({ item }) {
-  return (
-    <article className="relative h-full border-r border-black/10 pr-6 xl:pr-7">
-      <div className="pointer-events-none absolute -right-5 -top-5 h-52 w-52 rounded-full bg-[radial-gradient(circle,rgba(247,121,62,0.2),transparent_62%)]" />
-      <div className="relative grid h-full grid-cols-[minmax(0,1fr)_11.5rem] items-start gap-6 xl:grid-cols-[minmax(0,1fr)_12.5rem]">
-        <div className="flex h-full min-h-[16rem] flex-col justify-between gap-3.5">
-          <div className="space-y-2.5">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex rounded-[3px] border border-black/10 bg-black/[0.03] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted">
-                Featured list
-              </span>
-              <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-accent">
-                {formatRelativeDate(item.publishedAt ?? item.createdAt)}
-              </span>
-            </div>
-            <h3 className="mb-0 text-[2.05rem] leading-[0.97] text-text">{item.title}</h3>
-            <p className="mb-0 max-w-[66ch] text-[15px] leading-relaxed text-text">
-              {item.description || 'No description yet.'}
-            </p>
-            <CreatorRow creator={item.creator} />
-          </div>
-          <div className="space-y-1.5 pt-2">
-            <ListMeta item={item} className="text-[11.5px]" />
+          <h3 className="mb-0 text-[1.86rem] leading-[0.95] text-text sm:text-[2.15rem]">
+            {item?.title || 'Untitled list'}
+          </h3>
+
+          <CreatorIdentity creator={item?.creator} />
+
+          <p className="mb-0 max-w-[62ch] text-[14px] leading-7 text-text/88">{concept}</p>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+            <ListMeta item={item} className="text-[10.5px]" />
             <Link
               to={listHref(item)}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold tracking-[0.08em] text-accent transition hover:text-[#ef6b2f]"
+              className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-accent transition hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
             >
               Open list
-              <ArrowRight size={12} weight="bold" />
+              <ArrowRight size={11} weight="bold" />
             </Link>
           </div>
         </div>
 
-        <div className="hidden lg:flex lg:self-start lg:justify-self-end">
-          <FeaturedCollage item={item} />
+        <div className="pt-3 xl:justify-self-end xl:pt-1">
+          <HeroCollage item={item} />
         </div>
       </div>
     </article>
   )
 }
 
-function DesktopSupportingList({ item }) {
+function SupportingListShowcase({ item, index }) {
+  const concept = clampText(listConcept(item, index + 1), 110)
+
   return (
-    <article className="grid grid-cols-[1fr_auto] items-start gap-4 py-1.5">
-      <div className="min-w-0 space-y-1.5">
-        <div className="flex items-center gap-2">
-          <h4 className="mb-0 truncate text-[16px] font-semibold leading-tight text-text">{item.title}</h4>
-          <span className="inline-flex rounded-[3px] border border-black/10 bg-black/[0.03] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted">
-            {formatRelativeDate(item.publishedAt ?? item.createdAt)}
+    <article className="relative overflow-hidden border border-black/10 bg-white/60 p-3.5 sm:p-4">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(130%_88%_at_100%_0%,rgba(247,121,62,0.09),transparent_70%)]" />
+      <div className="relative grid gap-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted/90">
+            Mood pick
           </span>
+          <span className="text-[10px] text-muted">{formatRelativeDate(item?.publishedAt ?? item?.createdAt)}</span>
         </div>
-        <p className="mb-0 overflow-hidden text-[12px] leading-relaxed text-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
-          {item.description || 'No description yet.'}
-        </p>
-        <CreatorRow creator={item.creator} />
-        <div className="flex items-center justify-between gap-2">
-          <ListMeta item={item} />
-          <Link
-            to={listHref(item)}
-            className="inline-flex items-center gap-1 text-[10.5px] font-semibold tracking-[0.08em] text-accent transition hover:text-[#ef6b2f]"
-          >
-            Open list
-            <ArrowRight size={11} weight="bold" />
-          </Link>
+
+        <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+          <div className="min-w-0 space-y-2">
+            <h4 className="mb-0 overflow-hidden text-[1.05rem] leading-tight text-text [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+              {item?.title || 'Untitled list'}
+            </h4>
+            <CreatorIdentity creator={item?.creator} muted />
+            <p className="mb-0 overflow-hidden text-[12px] leading-relaxed text-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+              {concept}
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <ListMeta item={item} compact />
+              <Link
+                to={listHref(item)}
+                className="inline-flex w-fit items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text transition hover:text-accent"
+              >
+                Open list
+                <ArrowRight size={11} weight="bold" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="justify-self-start sm:justify-self-end">
+            <SupportingCollage item={item} />
+          </div>
         </div>
       </div>
-
-      <SupportingCollage item={item} />
     </article>
   )
 }
@@ -360,26 +384,25 @@ export default function BecauseCommunityLovesSection() {
 
   const rankedLists = useMemo(() => rankLists(lists), [lists])
   const featured = rankedLists[0] ?? null
-  const supporting = rankedLists.slice(1)
-  const desktopSupporting = supporting.slice(0, DESKTOP_SUPPORTING_LIMIT)
+  const supporting = rankedLists.slice(1, 1 + SUPPORTING_LIMIT)
 
   return (
-    <section className="space-y-2.5 sm:space-y-4">
-      <div className="flex items-center justify-between gap-2 sm:items-end sm:gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-4">
-        <div className="min-w-0 lg:pr-4">
+    <section className="space-y-3 sm:space-y-4 lg:space-y-5">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
           <p className="mb-0 text-[9px] font-semibold uppercase tracking-[0.2em] text-muted sm:text-[10px]">
-            Discovery
+            Discovery showcase
           </p>
-          <h2 className="mb-0 mt-1 text-[1.35rem] leading-tight text-text sm:text-[1.65rem]">
+          <h2 className="mb-0 mt-1 text-[1.34rem] leading-tight text-text sm:text-[1.72rem]">
             Most loved lists right now
           </h2>
-          <p className="mb-0 mt-1 max-w-2xl text-[12px] leading-relaxed text-muted sm:mt-1.5 sm:text-sm">
-            Real community lists ranked by favorites and comments from published list activity.
+          <p className="mb-0 mt-1.5 max-w-2xl text-[12px] leading-relaxed text-muted sm:text-sm">
+            Community-made list worlds with distinct moods, sequencing, and perspective.
           </p>
         </div>
         <Link
           to="/lists"
-          className="shrink-0 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-text transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 sm:text-[11px] lg:self-end lg:pb-1 lg:pt-0"
+          className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-text transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 sm:text-[11px]"
         >
           View all
         </Link>
@@ -397,34 +420,26 @@ export default function BecauseCommunityLovesSection() {
         <EmptyState />
       ) : (
         <>
-          <div className="overflow-hidden lg:hidden">
-            <div className="flex snap-x snap-mandatory gap-0 overflow-x-auto px-4 pb-1 pt-1 scrollbar-sleek sm:px-6">
-              <MobileListCard item={featured} featured />
-              {supporting.map((item) => (
-                <MobileListCard key={item.id} item={item} />
-              ))}
-            </div>
-          </div>
+          <div className="card vinyl-texture !rounded-none p-4 sm:p-5 lg:p-6">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] xl:items-start">
+              <HeroListShowcase item={featured} />
 
-          <div className="hidden lg:block">
-            <div className="rounded-2xl border border-black/10 bg-card px-5 py-4 xl:px-6">
-              <div className="grid grid-cols-[1.62fr_1.08fr] items-stretch gap-6 xl:grid-cols-[1.66fr_1.14fr]">
-                <DesktopFeaturedList item={featured} />
-                <div className="flex h-full flex-col justify-center divide-y divide-black/10">
-                  {desktopSupporting.map((item) => (
-                    <DesktopSupportingList key={item.id} item={item} />
-                  ))}
-                  {desktopSupporting.length === 0 ? (
-                    <div className="py-4 text-sm text-muted">No supporting lists yet.</div>
-                  ) : null}
-                </div>
+              <div className="space-y-3 border-t border-black/8 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
+                {supporting.map((item, index) => (
+                  <SupportingListShowcase key={item.id} item={item} index={index} />
+                ))}
+                {supporting.length === 0 ? (
+                  <div className="border border-black/10 bg-white/60 px-4 py-4 text-sm text-muted">
+                    No supporting list picks yet.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
 
-          <div className="hidden lg:flex lg:items-center lg:gap-2 lg:text-[11px] lg:text-muted">
+          <div className="hidden items-center gap-2 text-[11px] text-muted lg:flex">
             <TrendUp size={12} className="text-accent" />
-            Ranking uses real favorites and comments from published community lists.
+            Ranked by real favorites and comments from published community lists.
           </div>
         </>
       )}

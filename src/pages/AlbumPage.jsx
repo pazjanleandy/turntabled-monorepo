@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, CalendarPlus, ChatCircle, Heart, MusicNotes, NotePencil, Star, UserCircle } from "phosphor-react";
 import Navbar from "../components/Navbar.jsx";
 import NavbarGuest from "../components/NavbarGuest.jsx";
@@ -298,12 +298,15 @@ function AlbumReviewCard({
   commentBusy = false,
   editBusyCommentId = "",
   deleteBusyCommentId = "",
+  isHighlighted = false,
+  autoOpenComments = false,
+  highlightCommentId = "",
   onToggleLike = null,
   onAddComment = null,
   onEditComment = null,
   onDeleteComment = null,
 }) {
-  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(Boolean(autoOpenComments));
   const [commentDraft, setCommentDraft] = useState("");
   const [editingCommentId, setEditingCommentId] = useState("");
   const [editingCommentDraft, setEditingCommentDraft] = useState("");
@@ -382,7 +385,12 @@ function AlbumReviewCard({
   };
 
   return (
-    <article className="flex items-start gap-3 py-3.5 md:py-4">
+    <article
+      className={[
+        "flex items-start gap-3 py-3.5 md:py-4",
+        isHighlighted ? "rounded-xl bg-accent/6 px-2 ring-1 ring-accent/25" : "",
+      ].join(" ")}
+    >
       <div className="mt-0.5">
         {review?.user?.avatarUrl ? (
           <img
@@ -476,7 +484,12 @@ function AlbumReviewCard({
                       return (
                         <li
                           key={comment?.id ?? `${commentUsername}-${comment?.createdAt ?? ""}`}
-                          className="group relative py-2 first:pt-0 last:pb-0"
+                          className={[
+                            "group relative py-2 first:pt-0 last:pb-0",
+                            highlightCommentId && comment?.id === highlightCommentId
+                              ? "rounded-md bg-accent/8 px-1.5"
+                              : "",
+                          ].join(" ")}
                         >
                           <div className="flex items-start gap-2.5">
                             <div className="mt-0.5 shrink-0">
@@ -636,7 +649,10 @@ function AlbumReviewCard({
 export default function AlbumPage() {
   const navigate = useNavigate();
   const { releaseId } = useParams();
+  const [searchParams] = useSearchParams();
   const { isSignedIn, signOut } = useAuthStatus();
+  const highlightedReviewId = String(searchParams.get("review") ?? "").trim();
+  const highlightedCommentId = String(searchParams.get("comment") ?? "").trim();
   const [album, setAlbum] = useState(null);
   const [currentUserId, setCurrentUserId] = useState("");
   const [albumRefreshKey, setAlbumRefreshKey] = useState(0);
@@ -652,6 +668,7 @@ export default function AlbumPage() {
   const [reviewCommentEditBusyId, setReviewCommentEditBusyId] = useState("");
   const [reviewCommentDeleteBusyId, setReviewCommentDeleteBusyId] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const focusedReviewTokenRef = useRef("");
   const [navUser, setNavUser] = useState(() => {
     const cached = readCachedProfile();
     return {
@@ -780,6 +797,23 @@ export default function AlbumPage() {
       genres: Array.isArray(album.genres) ? album.genres : ["Unknown"],
     };
   }, [album]);
+
+  useEffect(() => {
+    if (!highlightedReviewId) {
+      focusedReviewTokenRef.current = "";
+      return;
+    }
+    const reviewRows = Array.isArray(safeAlbum?.reviews) ? safeAlbum.reviews : [];
+    const hasTarget = reviewRows.some((review) => review?.backlogId === highlightedReviewId);
+    if (!hasTarget) return;
+
+    const nextToken = `${safeAlbum?.id ?? "album"}:${highlightedReviewId}`;
+    if (focusedReviewTokenRef.current === nextToken) return;
+    focusedReviewTokenRef.current = nextToken;
+
+    const anchor = document.getElementById("album-community-reviews");
+    anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [highlightedReviewId, safeAlbum]);
 
   useEffect(() => {
     if (!isSignedIn || !safeAlbum?.id) {
@@ -1219,9 +1253,9 @@ export default function AlbumPage() {
           <div className="space-y-6 md:space-y-10">
             <div className="hidden md:block">
               {isSignedIn ? (
-                <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+                <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
               ) : (
-                <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+                <NavbarGuest className="mx-auto mt-6 w-[min(100%,1080px)]" />
               )}
             </div>
 
@@ -1261,9 +1295,9 @@ export default function AlbumPage() {
           <div className="space-y-6 md:space-y-10">
             <div className="hidden md:block">
               {isSignedIn ? (
-                <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+                <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
               ) : (
-                <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+                <NavbarGuest className="mx-auto mt-6 w-[min(100%,1080px)]" />
               )}
             </div>
 
@@ -1308,9 +1342,9 @@ export default function AlbumPage() {
         <div className="space-y-6 md:space-y-10">
           <div className="hidden md:block">
             {isSignedIn ? (
-              <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+              <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
             ) : (
-              <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+              <NavbarGuest className="mx-auto mt-6 w-[min(100%,1080px)]" />
             )}
           </div>
           <div className="pt-3 md:hidden">
@@ -1552,7 +1586,10 @@ export default function AlbumPage() {
               <div className="mt-2 divide-y divide-black/10">
                 {safeAlbum.reviews.map((review) => (
                   <AlbumReviewCard
-                    key={review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`}
+                    key={[
+                      review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`,
+                      review?.backlogId === highlightedReviewId ? "highlighted" : "normal",
+                    ].join(":")}
                     review={review}
                     isSignedIn={isSignedIn}
                     currentUserId={currentUserId}
@@ -1560,6 +1597,11 @@ export default function AlbumPage() {
                     commentBusy={reviewCommentBusyId === review?.backlogId}
                     editBusyCommentId={reviewCommentEditBusyId}
                     deleteBusyCommentId={reviewCommentDeleteBusyId}
+                    isHighlighted={review?.backlogId === highlightedReviewId}
+                    autoOpenComments={review?.backlogId === highlightedReviewId}
+                    highlightCommentId={
+                      review?.backlogId === highlightedReviewId ? highlightedCommentId : ""
+                    }
                     onToggleLike={handleReviewLikeToggle}
                     onAddComment={handleReviewCommentAdd}
                     onEditComment={handleReviewCommentEdit}
@@ -1591,7 +1633,10 @@ export default function AlbumPage() {
               <div className="mt-2 divide-y divide-black/5">
                 {safeAlbum.reviews.map((review) => (
                   <AlbumReviewCard
-                    key={review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`}
+                    key={[
+                      review?.backlogId ?? `${review?.user?.id ?? "user"}-${review?.reviewedAt ?? ""}`,
+                      review?.backlogId === highlightedReviewId ? "highlighted" : "normal",
+                    ].join(":")}
                     review={review}
                     isSignedIn={isSignedIn}
                     currentUserId={currentUserId}
@@ -1599,6 +1644,11 @@ export default function AlbumPage() {
                     commentBusy={reviewCommentBusyId === review?.backlogId}
                     editBusyCommentId={reviewCommentEditBusyId}
                     deleteBusyCommentId={reviewCommentDeleteBusyId}
+                    isHighlighted={review?.backlogId === highlightedReviewId}
+                    autoOpenComments={review?.backlogId === highlightedReviewId}
+                    highlightCommentId={
+                      review?.backlogId === highlightedReviewId ? highlightedCommentId : ""
+                    }
                     onToggleLike={handleReviewLikeToggle}
                     onAddComment={handleReviewCommentAdd}
                     onEditComment={handleReviewCommentEdit}
@@ -1646,3 +1696,4 @@ export default function AlbumPage() {
     </div>
   );
 }
+

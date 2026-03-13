@@ -257,20 +257,32 @@ export class AlbumRepository {
     this.supabase = supabase;
   }
 
-  async findLatestForExplore(page, limit) {
+  async findLatestForExplore(page, limit, options = {}) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+    const sort = typeof options?.sort === "string" ? options.sort : "latest-desc";
 
     // Stable ordering prevents overlapping windows when paginating with range(from, to).
-    const { data, error, count } = await this.supabase
+    let query = this.supabase
       .from("album")
       .select(
         "id,mbid,title,release_date,primary_type,secondary_types,cover_art_url,last_synced_at,artist:artist_id(id,name)",
         { count: "exact" }
-      )
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to);
+      );
+
+    if (sort === "title-asc") {
+      query = query
+        .order("normalized_title", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true });
+    } else if (sort === "title-desc") {
+      query = query
+        .order("normalized_title", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false });
+    } else {
+      query = query.order("created_at", { ascending: false }).order("id", { ascending: false });
+    }
+
+    const { data, error, count } = await query.range(from, to);
 
     handleDbError(error, "fetching latest albums for explore");
     return { rows: data ?? [], total: count ?? 0 };
@@ -305,7 +317,9 @@ export class AlbumRepository {
 
     const { data, error } = await this.supabase
       .from("album")
-      .select("id,mbid,title,normalized_title,cover_art_url,last_synced_at,artist:artist_id(id,name)")
+      .select(
+        "id,mbid,title,normalized_title,release_date,primary_type,secondary_types,cover_art_url,last_synced_at,artist:artist_id(id,name,normalized_name)"
+      )
       .eq("normalized_title", normalizedTitle)
       .eq("artist_id", artistId)
       .maybeSingle();

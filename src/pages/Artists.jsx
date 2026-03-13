@@ -339,9 +339,9 @@ export default function Artists() {
         <div className="space-y-4 md:space-y-8">
           <div className="hidden md:block">
             {isSignedIn ? (
-              <Navbar className="mx-auto mt-6 w-[min(100%,900px)]" />
+              <Navbar className="mx-auto mt-6 w-[min(100%,1080px)]" />
             ) : (
-              <NavbarGuest className="mx-auto mt-6 w-[min(100%,900px)]" />
+              <NavbarGuest className="mx-auto mt-6 w-[min(100%,1080px)]" />
             )}
           </div>
 
@@ -558,3 +558,4 @@ export default function Artists() {
     </div>
   )
 }
+

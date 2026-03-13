@@ -1,13 +1,7 @@
 import { toErrorResponse, ValidationError } from "../_lib/errors.js";
-import { getRequestId, parsePagination, sendJson } from "../_lib/http.js";
+import { getRequestId, sendJson } from "../_lib/http.js";
 import { logError } from "../_lib/logger.js";
-import { resolveOptionalUserId } from "./auth.js";
 import { buildExploreContainer } from "./container.js";
-
-function parseFilterParam(value) {
-  if (typeof value !== "string") return "";
-  return value.trim().toLowerCase();
-}
 
 export default async function handler(req, res) {
   const requestId = getRequestId(req);
@@ -18,16 +12,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { supabase, exploreService } = buildExploreContainer();
-    const userId = await resolveOptionalUserId(req, supabase);
-    const { page, limit } = parsePagination(req.query);
-    const filter = parseFilterParam(req.query?.filter);
-    const data = await exploreService.getExplorePage(userId, page, limit, { filter });
-
+    const { exploreService } = buildExploreContainer();
+    const data = await exploreService.getGrammyWinners2026();
     sendJson(res, 200, data, requestId);
   } catch (error) {
     const mapped = toErrorResponse(error, requestId);
-    logError("Explore endpoint failed.", {
+    logError("Explore grammy winners endpoint failed.", {
       requestId,
       error: error?.message,
       stack: error?.stack,
