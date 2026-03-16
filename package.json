@@ -10,10 +10,13 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start:api": "node render-api-server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
     "phosphor-react": "^1.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
