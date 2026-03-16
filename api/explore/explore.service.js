@@ -344,6 +344,7 @@ export class ExploreService {
       this.backlogRepository.listRecentReviewComments({
         since: recentSinceIso,
         limit: Math.max(candidatePoolLimit * 8, 240),
+        includeCommentText: false,
       }),
     ]);
 

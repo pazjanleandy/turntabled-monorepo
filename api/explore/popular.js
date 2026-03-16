@@ -1,6 +1,9 @@
 import { toErrorResponse, ValidationError } from "../_lib/errors.js";
 import { getRequestId, parsePagination, sendJson } from "../_lib/http.js";
 import { logError } from "../_lib/logger.js";
+import { getOrSetMemoryCache } from "../_lib/memory-cache.js";
+import { setPublicCacheHeaders } from "../_lib/cache-control.js";
+import { measureRequest } from "../_lib/perf.js";
 import { buildExploreContainer } from "./container.js";
 
 export default async function handler(req, res) {
@@ -14,7 +17,20 @@ export default async function handler(req, res) {
   try {
     const { page, limit } = parsePagination(req.query);
     const { exploreService } = buildExploreContainer();
-    const data = await exploreService.getPopularAlbums(page, limit);
+    const cacheKey = `explore:popular:v1:p${page}:l${limit}`;
+    const data = await getOrSetMemoryCache(cacheKey, 60_000, () =>
+      measureRequest(
+        "explore.popular",
+        requestId,
+        () => exploreService.getPopularAlbums(page, limit),
+        { warnMs: 350 }
+      )
+    );
+    setPublicCacheHeaders(res, {
+      sMaxAgeSeconds: 60,
+      staleWhileRevalidateSeconds: 180,
+      maxAgeSeconds: 0,
+    });
     sendJson(res, 200, data, requestId);
   } catch (error) {
     const mapped = toErrorResponse(error, requestId);

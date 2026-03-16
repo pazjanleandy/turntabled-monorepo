@@ -360,7 +360,8 @@ export default function BecauseCommunityLovesSection() {
         const payload = await fetchPublishedLists({
           sort: 'trending',
           page: 1,
-          limit: 50,
+          limit: 12,
+          includeAuth: false,
         })
         if (cancelled) return
         setLists(normalizeLists(payload))

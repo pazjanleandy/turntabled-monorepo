@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FRIENDS_UPDATED_EVENT_NAME, fetchFriendActivityFeed } from '../lib/friendsClient.js'
 
-export default function useFriendActivity({ isSignedIn, limit = 20 }) {
+export default function useFriendActivity({ isSignedIn, limit = 20, deferMs = 0 }) {
   const [activities, setActivities] = useState([])
   const [hasFriends, setHasFriends] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -32,8 +32,18 @@ export default function useFriendActivity({ isSignedIn, limit = 20 }) {
   }, [isSignedIn, limit])
 
   useEffect(() => {
-    reload()
-  }, [reload])
+    if (!deferMs || deferMs <= 0) {
+      reload()
+      return () => {}
+    }
+
+    const timeoutId = setTimeout(() => {
+      reload()
+    }, deferMs)
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [reload, deferMs])
 
   useEffect(() => {
     if (typeof window === 'undefined') return () => {}

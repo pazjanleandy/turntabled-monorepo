@@ -22,8 +22,9 @@ export async function fetchPublishedLists({
   query = '',
   page = 1,
   limit = 50,
+  includeAuth = true,
 } = {}) {
-  const authHeaders = await buildApiAuthHeaders()
+  const authHeaders = includeAuth ? await buildApiAuthHeaders() : {}
   const params = new URLSearchParams()
   params.set('sort', sort)
   params.set('page', String(page))

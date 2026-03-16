@@ -193,12 +193,15 @@ export class BacklogRepository {
     return data ?? [];
   }
 
-  async listRecentReviewComments({ since = null, limit = 500 } = {}) {
+  async listRecentReviewComments({ since = null, limit = 500, includeCommentText = true } = {}) {
     const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 2000) : 500;
+    const selectFields = includeCommentText
+      ? "id,backlog_id,user_id,comment_text,created_at,updated_at"
+      : "id,backlog_id,user_id,created_at,updated_at";
 
     let query = this.supabase
       .from("review_comments")
-      .select("id,backlog_id,user_id,comment_text,created_at,updated_at")
+      .select(selectFields)
       .order("created_at", { ascending: false })
       .limit(safeLimit);
 
@@ -407,23 +410,52 @@ export class AlbumRepository {
   }
 
   async findPopularFromBacklog(page, limit) {
+    const safePage = Number.isInteger(page) ? Math.max(page, 1) : 1;
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 50) : 20;
+    const offset = (safePage - 1) * safeLimit;
+
+    const { data, error } = await this.supabase.rpc("get_popular_albums_from_backlog", {
+      p_offset: offset,
+      p_limit: safeLimit,
+    });
+
+    if (!error) {
+      return Array.isArray(data) ? data : [];
+    }
+
+    if (!this.shouldFallbackPopularAggregation(error)) {
+      handleDbError(error, "aggregating popular albums from backlog");
+    }
+
+    // Safety fallback for environments missing the new SQL helper.
+    return this.findPopularFromBacklogLegacy(safePage, safeLimit);
+  }
+
+  shouldFallbackPopularAggregation(error) {
+    const code = String(error?.code ?? "").trim();
+    const message = String(error?.message ?? "").toLowerCase();
+    return (
+      code === "PGRST202" ||
+      code === "42883" ||
+      message.includes("get_popular_albums_from_backlog")
+    );
+  }
+
+  async findPopularFromBacklogLegacy(page, limit) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
-
     const { data, error } = await this.supabase
       .from("backlog")
       .select("album_id,user_id,artist_name_raw,album_title_raw,rating,added_at,updated_at")
       .not("album_id", "is", null);
 
-    handleDbError(error, "aggregating popular albums from backlog");
+    handleDbError(error, "aggregating popular albums from backlog (legacy)");
 
     const rows = Array.isArray(data) ? data : [];
     const groupedMap = new Map();
-
     for (const row of rows) {
       const albumId = row?.album_id;
       if (!albumId) continue;
-
       let entry = groupedMap.get(albumId);
       if (!entry) {
         entry = {
@@ -438,7 +470,6 @@ export class AlbumRepository {
         };
         groupedMap.set(albumId, entry);
       }
-
       if (typeof row?.user_id === "string" && row.user_id.trim()) {
         entry.unique_users.add(row.user_id);
       }
@@ -446,19 +477,11 @@ export class AlbumRepository {
         entry.ratings_count += 1;
         entry.ratings_sum += row.rating;
       }
-      if (!entry.album_title_raw && row?.album_title_raw) {
-        entry.album_title_raw = row.album_title_raw;
-      }
-      if (!entry.artist_name_raw && row?.artist_name_raw) {
-        entry.artist_name_raw = row.artist_name_raw;
-      }
-
+      if (!entry.album_title_raw && row?.album_title_raw) entry.album_title_raw = row.album_title_raw;
+      if (!entry.artist_name_raw && row?.artist_name_raw) entry.artist_name_raw = row.artist_name_raw;
       const loggedAtCurrent = Date.parse(entry.last_logged_at ?? "") || 0;
       const loggedAtNext = Date.parse(row?.added_at ?? "") || 0;
-      if (loggedAtNext > loggedAtCurrent) {
-        entry.last_logged_at = row?.added_at ?? entry.last_logged_at;
-      }
-
+      if (loggedAtNext > loggedAtCurrent) entry.last_logged_at = row?.added_at ?? entry.last_logged_at;
       const updatedAtCurrent = Date.parse(entry.last_backlog_updated_at ?? "") || 0;
       const updatedAtNext = Date.parse(row?.updated_at ?? "") || 0;
       if (updatedAtNext > updatedAtCurrent) {
@@ -466,31 +489,25 @@ export class AlbumRepository {
       }
     }
 
-    const grouped = Array.from(groupedMap.values()).map((entry) => {
-      const logsCount = entry.unique_users.size;
-      const averageRating =
-        entry.ratings_count > 0 ? Number((entry.ratings_sum / entry.ratings_count).toFixed(4)) : null;
-      return {
-        album_id: entry.album_id,
-        album_title_raw: entry.album_title_raw,
-        artist_name_raw: entry.artist_name_raw,
-        logs_count: logsCount,
-        ratings_count: entry.ratings_count,
-        average_rating: averageRating,
-        last_logged_at: entry.last_logged_at,
-        last_backlog_updated_at: entry.last_backlog_updated_at,
-      };
-    });
+    const grouped = Array.from(groupedMap.values()).map((entry) => ({
+      album_id: entry.album_id,
+      album_title_raw: entry.album_title_raw,
+      artist_name_raw: entry.artist_name_raw,
+      logs_count: entry.unique_users.size,
+      ratings_count: entry.ratings_count,
+      average_rating:
+        entry.ratings_count > 0 ? Number((entry.ratings_sum / entry.ratings_count).toFixed(4)) : null,
+      last_logged_at: entry.last_logged_at,
+      last_backlog_updated_at: entry.last_backlog_updated_at,
+    }));
 
     grouped.sort((a, b) => {
       const logsA = Number(a?.logs_count ?? 0);
       const logsB = Number(b?.logs_count ?? 0);
       if (logsB !== logsA) return logsB - logsA;
-
       const avgA = a?.average_rating == null ? Number.NEGATIVE_INFINITY : Number(a.average_rating);
       const avgB = b?.average_rating == null ? Number.NEGATIVE_INFINITY : Number(b.average_rating);
       if (avgB !== avgA) return avgB - avgA;
-
       const updatedA = Date.parse(a?.last_backlog_updated_at ?? "") || 0;
       const updatedB = Date.parse(b?.last_backlog_updated_at ?? "") || 0;
       return updatedB - updatedA;

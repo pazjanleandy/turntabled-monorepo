@@ -21,7 +21,7 @@
 ## Required Infrastructure (Supabase Native)
 - Supabase project with Table Editor enabled.
 - Upstash Redis (REST API enabled).
-- Vercel Cron targeting `/api/internal/musicbrainz-worker` every minute.
+- Vercel Cron targeting `/api/internal/musicbrainz-worker` daily.
 
 ## Supabase Table Setup
 Create these tables in Supabase Table Editor:

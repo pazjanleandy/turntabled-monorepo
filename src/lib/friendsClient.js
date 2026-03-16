@@ -186,17 +186,53 @@ function withResolvedFriendAvatar(entry, avatarPathByUserId) {
   }
 }
 
+const avatarFallbackCache = new Map()
+const AVATAR_FALLBACK_TTL_MS = 5 * 60 * 1000
+
+function readCachedFallbackAvatar(userId) {
+  if (!userId) return ''
+  const cached = avatarFallbackCache.get(userId)
+  if (!cached) return ''
+  if (cached.expiresAt <= Date.now()) {
+    avatarFallbackCache.delete(userId)
+    return ''
+  }
+  return cached.avatarUrl || ''
+}
+
+function writeCachedFallbackAvatar(userId, avatarUrl) {
+  if (!userId || !avatarUrl) return
+  avatarFallbackCache.set(userId, {
+    avatarUrl,
+    expiresAt: Date.now() + AVATAR_FALLBACK_TTL_MS,
+  })
+}
+
 async function fetchPublicProfileAvatarUrlsByUserIds(userIds) {
-  const normalizedIds = Array.isArray(userIds)
-    ? userIds.filter((value) => typeof value === 'string' && value.trim())
-    : []
+  const normalizedIds = Array.from(
+    new Set(
+      (Array.isArray(userIds) ? userIds : [])
+        .filter((value) => typeof value === 'string' && value.trim())
+        .map((value) => value.trim()),
+    ),
+  )
   if (normalizedIds.length === 0) return new Map()
+
+  const cachedPairs = normalizedIds
+    .map((userId) => [userId, readCachedFallbackAvatar(userId)])
+    .filter(([, avatarUrl]) => Boolean(avatarUrl))
+  const cachedMap = new Map(cachedPairs)
+
+  const missingIds = normalizedIds.filter((userId) => !cachedMap.has(userId))
+  if (missingIds.length === 0) {
+    return cachedMap
+  }
 
   const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
   const headers = await buildApiAuthHeaders().catch(() => ({}))
 
-  const avatarPairs = await Promise.all(
-    normalizedIds.map(async (userId) => {
+  const fetchedPairs = await Promise.all(
+    missingIds.map(async (userId) => {
       try {
         const response = await fetch(
           `${apiBase}/api/profile/view?userId=${encodeURIComponent(userId)}`,
@@ -204,8 +240,10 @@ async function fetchPublicProfileAvatarUrlsByUserIds(userIds) {
         )
         const payload = await response.json().catch(() => null)
         if (!response.ok) return null
-        const avatarUrl = typeof payload?.user?.avatarUrl === 'string' ? payload.user.avatarUrl.trim() : ''
+        const avatarUrl =
+          typeof payload?.user?.avatarUrl === 'string' ? payload.user.avatarUrl.trim() : ''
         if (!avatarUrl) return null
+        writeCachedFallbackAvatar(userId, avatarUrl)
         return [userId, avatarUrl]
       } catch {
         return null
@@ -213,7 +251,11 @@ async function fetchPublicProfileAvatarUrlsByUserIds(userIds) {
     }),
   )
 
-  return new Map(avatarPairs.filter(Boolean))
+  for (const pair of fetchedPairs) {
+    if (!pair) continue
+    cachedMap.set(pair[0], pair[1])
+  }
+  return cachedMap
 }
 
 export async function fetchFriends() {

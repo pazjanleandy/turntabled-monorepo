@@ -237,6 +237,92 @@ function mapAlbumPickerRow(row) {
   };
 }
 
+function countRowsByListId(rows = []) {
+  const counts = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const listId = row?.list_id;
+    if (typeof listId !== "string" || !listId.trim()) continue;
+    counts.set(listId, (counts.get(listId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function buildAlbumSearchTextByListId(itemRows = []) {
+  const textByListId = new Map();
+  for (const row of Array.isArray(itemRows) ? itemRows : []) {
+    const listId = row?.list_id;
+    if (typeof listId !== "string" || !listId.trim()) continue;
+    const album = mapAlbum(row);
+    const chunk = `${album.title} ${album.artist}`.trim();
+    if (!chunk) continue;
+    const current = textByListId.get(listId) ?? "";
+    textByListId.set(listId, current ? `${current} ${chunk}` : chunk);
+  }
+  return textByListId;
+}
+
+function mapPublishedListSummary(
+  row,
+  {
+    favoriteCountByListId = new Map(),
+    commentCountByListId = new Map(),
+    itemCountByListId = new Map(),
+    viewerFavoritedSet = new Set(),
+    viewerUserId = null,
+    avatarPathByUserId = new Map(),
+    supabaseUrl = "",
+  } = {}
+) {
+  const listId = row?.id ?? null;
+  const favoriteCount = Number(favoriteCountByListId.get(listId) ?? 0);
+  const commentCount = Number(commentCountByListId.get(listId) ?? 0);
+  const albumCount = Number(itemCountByListId.get(listId) ?? 0);
+  const favoritedByViewer = listId ? viewerFavoritedSet.has(listId) : false;
+  const ownedByViewer = Boolean(viewerUserId && String(row?.user_id ?? "") === String(viewerUserId));
+
+  return {
+    id: listId,
+    title: row?.title ?? "",
+    description: row?.description ?? "",
+    tags: Array.isArray(row?.tags) ? row.tags.filter(Boolean) : [],
+    publishedAt: row?.published_at ?? row?.created_at ?? null,
+    createdAt: row?.created_at ?? null,
+    creator: mapCreator(row, avatarPathByUserId, supabaseUrl),
+    albums: [],
+    albumCount,
+    favoriteCount,
+    commentCount,
+    isFavoritedByViewer: favoritedByViewer,
+    isOwnedByViewer: ownedByViewer,
+  };
+}
+
+function attachAlbumsToPublishedLists(rows = [], itemRows = [], { previewLimit = 8 } = {}) {
+  const itemsByListId = new Map();
+  for (const itemRow of Array.isArray(itemRows) ? itemRows : []) {
+    const listId = itemRow?.list_id;
+    if (typeof listId !== "string" || !listId.trim()) continue;
+    const bucket = itemsByListId.get(listId) ?? [];
+    bucket.push(itemRow);
+    itemsByListId.set(listId, bucket);
+  }
+
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const listItems = itemsByListId.get(row?.id) ?? [];
+    const albums = listItems.map((item) => mapAlbum(item));
+    const limitedAlbums = albums.slice(0, Math.max(1, previewLimit));
+
+    return {
+      ...row,
+      albums: limitedAlbums,
+      albumCount:
+        Number.isFinite(Number(row?.albumCount)) && Number(row.albumCount) > 0
+          ? Number(row.albumCount)
+          : albums.length,
+    };
+  });
+}
+
 function buildListMaps(
   listRows,
   itemRows,
@@ -312,31 +398,64 @@ export class ListsService {
     const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 50) : 24;
 
     const baseRows = await this.listsRepository.listPublishedLists();
+    if (baseRows.length === 0) {
+      return {
+        page: safePage,
+        limit: safeLimit,
+        total: 0,
+        sort: normalizedSort,
+        tags: [],
+        featured: [],
+        items: [],
+      };
+    }
+
     const listIds = baseRows.map((row) => row.id);
     const creatorUserIds = baseRows.map((row) => row?.user_id).filter(Boolean);
-    const [itemRows, favoriteRows, commentRows, profileMediaRows] = await Promise.all([
-      this.listsRepository.listItemsByListIds(listIds),
-      this.listsRepository.listFavoritesByListIds(listIds),
-      this.listsRepository.listCommentSummariesByListIds(listIds),
+    const normalizedViewerUserId =
+      typeof viewerUserId === "string" && viewerUserId.trim() ? viewerUserId.trim() : null;
+
+    const [
+      itemCountRows,
+      favoriteCountRows,
+      commentCountRows,
+      profileMediaRows,
+      viewerFavoritedListIds,
+    ] = await Promise.all([
+      this.listsRepository.listItemCountRowsByListIds(listIds),
+      this.listsRepository.listFavoriteCountRowsByListIds(listIds),
+      this.listsRepository.listCommentCountRowsByListIds(listIds),
       this.listsRepository.listProfileMediaByUserIds(creatorUserIds),
+      this.listsRepository.listFavoritedListIdsByUser(normalizedViewerUserId, listIds),
     ]);
 
     const avatarPathByUserId = new Map(
       (profileMediaRows ?? []).map((row) => [String(row?.id ?? ""), row?.avatar_path ?? null])
     );
-
-    const hydrated = buildListMaps(
-      baseRows,
-      itemRows,
-      favoriteRows,
-      commentRows,
-      viewerUserId,
-      avatarPathByUserId,
-      this.supabaseUrl
+    const itemCountByListId = countRowsByListId(itemCountRows);
+    const favoriteCountByListId = countRowsByListId(favoriteCountRows);
+    const commentCountByListId = countRowsByListId(commentCountRows);
+    const viewerFavoritedSet = new Set(
+      (Array.isArray(viewerFavoritedListIds) ? viewerFavoritedListIds : [])
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.trim())
     );
+
+    const summaries = baseRows.map((row) =>
+      mapPublishedListSummary(row, {
+        favoriteCountByListId,
+        commentCountByListId,
+        itemCountByListId,
+        viewerFavoritedSet,
+        viewerUserId: normalizedViewerUserId,
+        avatarPathByUserId,
+        supabaseUrl: this.supabaseUrl,
+      })
+    );
+
     const availableTags = Array.from(
       new Set(
-        hydrated.flatMap((row) =>
+        summaries.flatMap((row) =>
           Array.isArray(row?.tags) ? row.tags.map((tag) => String(tag).trim()) : []
         )
       )
@@ -344,7 +463,13 @@ export class ListsService {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
 
-    const filtered = hydrated.filter((row) => {
+    let albumSearchTextByListId = new Map();
+    if (normalizedQuery) {
+      const searchItems = await this.listsRepository.listItemsByListIds(listIds);
+      albumSearchTextByListId = buildAlbumSearchTextByListId(searchItems);
+    }
+
+    const filtered = summaries.filter((row) => {
       if (
         normalizedTag &&
         !row.tags.some(
@@ -361,7 +486,7 @@ export class ListsService {
         row.description,
         row.creator?.username,
         ...row.tags,
-        ...row.albums.map((album) => `${album.title} ${album.artist}`),
+        albumSearchTextByListId.get(row?.id) ?? "",
       ]
         .join(" ")
         .toLowerCase();
@@ -372,6 +497,21 @@ export class ListsService {
     const total = sorted.length;
     const from = (safePage - 1) * safeLimit;
     const to = from + safeLimit;
+    const pageRows = sorted.slice(from, to);
+    const featuredRows = sortLists(summaries, "trending").slice(0, 3);
+    const listsToHydrate = [
+      ...new Set(
+        [...featuredRows, ...pageRows]
+          .map((row) => row?.id)
+          .filter((value) => typeof value === "string" && value.trim())
+      ),
+    ];
+    const hydratedItems =
+      listsToHydrate.length > 0 ? await this.listsRepository.listItemsByListIds(listsToHydrate) : [];
+    const hydratedPageRows = attachAlbumsToPublishedLists(pageRows, hydratedItems, { previewLimit: 8 });
+    const hydratedFeaturedRows = attachAlbumsToPublishedLists(featuredRows, hydratedItems, {
+      previewLimit: 8,
+    });
 
     return {
       page: safePage,
@@ -379,8 +519,8 @@ export class ListsService {
       total,
       sort: normalizedSort,
       tags: availableTags,
-      featured: sortLists(hydrated, "trending").slice(0, 3),
-      items: sorted.slice(from, to),
+      featured: hydratedFeaturedRows,
+      items: hydratedPageRows,
     };
   }
 

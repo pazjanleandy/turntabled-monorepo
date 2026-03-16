@@ -33,6 +33,97 @@ export class BacklogRepository {
     return { rows: data ?? [], total: count ?? 0 };
   }
 
+  async getHomeSummaryByUser(userId) {
+    const { data, error } = await this.supabase.rpc("get_user_backlog_home_summary", {
+      p_user_id: userId,
+    });
+
+    if (!error) {
+      if (Array.isArray(data)) {
+        return data[0] ?? null;
+      }
+      return data ?? null;
+    }
+
+    if (!this.shouldFallbackHomeSummary(error)) {
+      handleDbError(error, "fetching backlog home summary");
+    }
+
+    // Compatibility fallback when the SQL helper has not been migrated yet.
+    return this.getHomeSummaryByUserLegacy(userId);
+  }
+
+  shouldFallbackHomeSummary(error) {
+    const code = String(error?.code ?? "").trim();
+    const message = String(error?.message ?? "").toLowerCase();
+    return (
+      code === "PGRST202" ||
+      code === "42883" ||
+      message.includes("get_user_backlog_home_summary")
+    );
+  }
+
+  buildLegacyHomeSummary(rows = []) {
+    const buckets = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+    const counts = new Map(buckets.map((bucket) => [bucket.toFixed(1), 0]));
+    let listenedCount = 0;
+    let backlogCount = 0;
+    let logsCount = 0;
+    let ratedCount = 0;
+
+    for (const row of rows) {
+      listenedCount += 1;
+      const status = String(row?.status ?? "").trim().toLowerCase();
+      if (status === "listened") logsCount += 1;
+      if (status === "listening" || status === "unfinished" || status === "backloggd") {
+        backlogCount += 1;
+      }
+      const rating = Number(row?.rating);
+      if (Number.isFinite(rating) && rating >= 1 && rating <= 5) {
+        ratedCount += 1;
+        const bucket = Math.min(5, Math.max(1, Math.round(rating * 2) / 2));
+        const key = bucket.toFixed(1);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+
+    return {
+      listened_count: listenedCount,
+      backlog_count: backlogCount,
+      logs_count: logsCount,
+      rated_count: ratedCount,
+      rating_distribution: buckets.map((bucket) => ({
+        bucket: bucket.toFixed(1),
+        count: counts.get(bucket.toFixed(1)) ?? 0,
+      })),
+    };
+  }
+
+  async getHomeSummaryByUserLegacy(userId) {
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select("status,rating")
+      .eq("user_id", userId);
+
+    handleDbError(error, "fetching backlog home summary (legacy)");
+    return this.buildLegacyHomeSummary(data ?? []);
+  }
+
+  async listRecentActivityByUser(userId, limit = 5) {
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 20) : 5;
+    const { data, error } = await this.supabase
+      .from("backlog")
+      .select(
+        "id,status,rating,added_at,updated_at,artist_name_raw,album_title_raw,album:album_id(title,cover_art_url,artist:artist_id(name))"
+      )
+      .eq("user_id", userId)
+      .order("added_at", { ascending: false })
+      .limit(safeLimit);
+
+    handleDbError(error, "fetching recent backlog activity for home summary");
+    return data ?? [];
+  }
+
   async findById(id) {
     const { data, error } = await this.supabase
       .from("backlog")

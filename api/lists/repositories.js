@@ -235,6 +235,63 @@ export class CommunityListsRepository {
     return data ?? [];
   }
 
+  async listFavoriteCountRowsByListIds(listIds) {
+    const normalizedIds = dedupeStringIds(listIds);
+    if (normalizedIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("community_list_favorites")
+      .select("list_id")
+      .in("list_id", normalizedIds);
+
+    handleDbError(error, "fetching list favorite count rows by list ids");
+    return data ?? [];
+  }
+
+  async listCommentCountRowsByListIds(listIds) {
+    const normalizedIds = dedupeStringIds(listIds);
+    if (normalizedIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("community_list_comments")
+      .select("list_id")
+      .in("list_id", normalizedIds);
+
+    if (shouldSuppressListCommentSummaryError(error)) {
+      return [];
+    }
+    handleDbError(error, "fetching list comment count rows by list ids");
+    return data ?? [];
+  }
+
+  async listItemCountRowsByListIds(listIds) {
+    const normalizedIds = dedupeStringIds(listIds);
+    if (normalizedIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("community_list_items")
+      .select("list_id")
+      .in("list_id", normalizedIds);
+
+    handleDbError(error, "fetching list item count rows by list ids");
+    return data ?? [];
+  }
+
+  async listFavoritedListIdsByUser(userId, listIds) {
+    const normalizedIds = dedupeStringIds(listIds);
+    const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+    if (!normalizedUserId || normalizedIds.length === 0) return [];
+
+    const { data, error } = await this.supabase
+      .from("community_list_favorites")
+      .select("list_id")
+      .eq("user_id", normalizedUserId)
+      .in("list_id", normalizedIds);
+
+    handleDbError(error, "fetching viewer-favorited list ids");
+    return (data ?? []).map((row) => row?.list_id).filter(Boolean);
+  }
+
   async listFavoritesByListId(listId) {
     const { data, error } = await this.supabase
       .from("community_list_favorites")
@@ -339,6 +396,8 @@ export class CommunityListsRepository {
     const normalizedQuery = String(query ?? "").trim();
     const selectFields =
       "id,title,release_date,cover_art_url,last_synced_at,artist:artist_id(name)";
+    const candidateLimit = Math.min(400, Math.max(120, safeLimit * 8));
+    const artistCandidateLimit = Math.min(180, Math.max(60, safeLimit * 4));
 
     if (!normalizedQuery) {
       const { data, error, count } = await this.supabase
@@ -359,13 +418,13 @@ export class CommunityListsRepository {
         .ilike("title", `%${normalizedQuery}%`)
         .order("title", { ascending: true })
         .order("id", { ascending: true })
-        .limit(600),
+        .limit(candidateLimit),
       this.supabase
         .from("artist")
         .select("id")
         .ilike("name", `%${normalizedQuery}%`)
         .order("name", { ascending: true })
-        .limit(200),
+        .limit(artistCandidateLimit),
     ]);
 
     handleDbError(titleMatchResult.error, "searching albums by title for list creation");
@@ -381,7 +440,7 @@ export class CommunityListsRepository {
         .in("artist_id", artistIds)
         .order("title", { ascending: true })
         .order("id", { ascending: true })
-        .limit(600);
+        .limit(candidateLimit);
 
       handleDbError(error, "searching albums by artist for list creation");
       artistAlbumRows = data ?? [];

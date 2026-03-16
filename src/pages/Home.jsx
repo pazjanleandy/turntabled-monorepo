@@ -26,8 +26,6 @@ import HomeMobileTrendingSection from '../components/home/HomeMobileTrendingSect
 import HomeMobileStatsSection from '../components/home/HomeMobileStatsSection.jsx'
 
 const LOG_STATUSES = new Set(['listened'])
-const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'backloggd'])
-const LASTFM_RECENT_LIMIT = 5
 const RATING_BUCKETS = Array.from({ length: 9 }, (_, index) => 1 + index * 0.5)
 
 function buildRatingDistribution(items = []) {
@@ -47,36 +45,22 @@ function buildRatingDistribution(items = []) {
   }))
 }
 
-function pickLastFmCoverArt(images = []) {
-  if (!Array.isArray(images)) return ''
-  const orderedSizes = ['mega', 'extralarge', 'large', 'medium', 'small']
-  for (const size of orderedSizes) {
-    const match = images.find((item) => item?.size === size && typeof item?.['#text'] === 'string')
-    const url = typeof match?.['#text'] === 'string' ? match['#text'].trim() : ''
-    if (url) return url
-  }
-  return ''
-}
-
-function collapseConsecutiveRecentlyListened(items = []) {
-  const rows = Array.isArray(items) ? items : []
-  const result = []
-  let previousKey = ''
-
-  for (const item of rows) {
-    const album = normalizeRecentKeyPart(item?.album)
-    const artist = normalizeRecentKeyPart(item?.artist)
-    const key = `${artist}::${album}`
-
-    if (result.length > 0 && key && key === previousKey) {
-      continue
-    }
-
-    result.push(item)
-    previousKey = key
+function normalizeRatingDistributionPayload(rows = []) {
+  const countsByBucket = new Map(RATING_BUCKETS.map((bucket) => [bucket.toFixed(1), 0]))
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const bucketRaw = typeof row?.bucket === 'number' ? row.bucket : Number(row?.bucket)
+    if (!Number.isFinite(bucketRaw)) continue
+    const normalized = Math.min(5, Math.max(1, Math.round(bucketRaw * 2) / 2))
+    const bucketKey = normalized.toFixed(1)
+    if (!countsByBucket.has(bucketKey)) continue
+    const count = Number(row?.count)
+    countsByBucket.set(bucketKey, Number.isFinite(count) ? Math.max(0, count) : 0)
   }
 
-  return result
+  return RATING_BUCKETS.map((bucket) => ({
+    bucket,
+    count: countsByBucket.get(bucket.toFixed(1)) ?? 0,
+  }))
 }
 
 function normalizeRecentKeyPart(value) {
@@ -168,7 +152,7 @@ export default function Home() {
     isLoading: isFriendActivityLoading,
     error: friendActivityError,
     hasFriends,
-  } = useFriendActivity({ isSignedIn, limit: 24 })
+  } = useFriendActivity({ isSignedIn, limit: 24, deferMs: 320 })
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [navUser, setNavUser] = useState(() => {
     const cached = readCachedProfile()
@@ -187,12 +171,9 @@ export default function Home() {
   const [trendingWindowDays, setTrendingWindowDays] = useState(7)
   const [grammyWinners, setGrammyWinners] = useState([])
   const [isGrammyLoading, setIsGrammyLoading] = useState(false)
-  const [, setRecentlyListened] = useState([])
   const [backlogStats, setBacklogStats] = useState({ listened: 0, backlog: 0, logs: 0 })
   const [ratingDistribution, setRatingDistribution] = useState(() => buildRatingDistribution([]))
   const [userActivity, setUserActivity] = useState([])
-  const [, setIsRecentLoading] = useState(false)
-  const [, setRecentError] = useState('')
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -322,10 +303,13 @@ export default function Home() {
       }
     }
 
-    loadTrendingReviews()
+    const timeoutId = setTimeout(() => {
+      loadTrendingReviews()
+    }, 140)
 
     return () => {
       cancelled = true
+      clearTimeout(timeoutId)
       controller.abort()
     }
   }, [])
@@ -364,147 +348,45 @@ export default function Home() {
       }
     }
 
-    loadGrammyWinners()
+    const timeoutId = setTimeout(() => {
+      loadGrammyWinners()
+    }, 220)
+
     return () => {
       cancelled = true
+      clearTimeout(timeoutId)
       controller.abort()
     }
   }, [])
 
   useEffect(() => {
     if (!isSignedIn) {
-      setRecentlyListened([])
       setBacklogStats({ listened: 0, backlog: 0, logs: 0 })
       setRatingDistribution(buildRatingDistribution([]))
       setUserActivity([])
-      setRecentError('')
-      setIsRecentLoading(false)
       return
     }
 
     let cancelled = false
     const controller = new AbortController()
 
-    async function loadRecentlyListened() {
-      setIsRecentLoading(true)
-      setRecentError('')
-
+    async function loadHomeSummary() {
       try {
         const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
         const authHeaders = await buildApiAuthHeaders()
-        let recentMapped = null
-        const recentResponse = await fetch(`${apiBase}/api/users/me/recently-listened`, {
+        const response = await fetch(`${apiBase}/api/backlog/summary?activityLimit=5`, {
           headers: authHeaders,
           signal: controller.signal,
           cache: 'no-store',
         })
-        const recentPayload = await recentResponse.json().catch(() => null)
-        const recentItems = Array.isArray(recentPayload) ? recentPayload : []
-        if (recentResponse.ok) {
-          recentMapped = recentItems.map((item, index) => ({
-            id:
-              `${item?.source ?? 'lastfm'}-${item?.played_at ?? item?.logged_at ?? ''}-${index}`,
-            artist: item?.artist ?? 'Unknown Artist',
-            album: item?.album ?? item?.track ?? 'Unknown Album',
-            cover: item?.cover_art || '/album/am.jpg',
-            rating: 0,
-            status: 'listened',
-            addedAt: item?.played_at ?? item?.logged_at ?? null,
-          }))
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.error?.message ?? 'Failed to load home summary.')
         }
 
-        if ((!Array.isArray(recentMapped) || recentMapped.length === 0) && recentResponse.ok) {
-          const profileResponse = await fetch(`${apiBase}/api/profile`, {
-            headers: authHeaders,
-            signal: controller.signal,
-            cache: 'no-store',
-          })
-          const profilePayload = await profileResponse.json().catch(() => null)
-          const lastfmUsername = profilePayload?.user?.lastfmUsername
-          const lastfmApiKey = import.meta.env.VITE_LASTFM_API_KEY
-
-          if (
-            profileResponse.ok &&
-            typeof lastfmUsername === 'string' &&
-            lastfmUsername.trim() &&
-            typeof lastfmApiKey === 'string' &&
-            lastfmApiKey.trim()
-          ) {
-            const params = new URLSearchParams({
-              method: 'user.getRecentTracks',
-              user: lastfmUsername.trim(),
-              api_key: lastfmApiKey.trim(),
-              format: 'json',
-              limit: String(LASTFM_RECENT_LIMIT),
-            })
-            const lastfmResponse = await fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, {
-              signal: controller.signal,
-              cache: 'no-store',
-            })
-            const lastfmPayload = await lastfmResponse.json().catch(() => null)
-            const rawTracks = Array.isArray(lastfmPayload?.recenttracks?.track)
-              ? lastfmPayload.recenttracks.track
-              : []
-            if (lastfmResponse.ok && !lastfmPayload?.error) {
-              recentMapped = rawTracks.map((track, index) => ({
-                id: `lastfm-direct-${index}`,
-                artist: track?.artist?.['#text'] ?? 'Unknown Artist',
-                album: track?.album?.['#text'] || track?.name || 'Unknown Album',
-                cover: pickLastFmCoverArt(track?.image) || '/album/am.jpg',
-                rating: 0,
-                status: 'listened',
-                addedAt:
-                  typeof track?.date?.uts === 'string' && track.date.uts.trim()
-                    ? new Date(Number.parseInt(track.date.uts, 10) * 1000).toISOString()
-                    : null,
-              }))
-            }
-          }
-        }
-
-        const limit = 50
-        let page = 1
-        let total = 0
-        let allItems = []
-
-        while (!cancelled) {
-          const response = await fetch(`${apiBase}/api/backlog?page=${page}&limit=${limit}`, {
-            headers: authHeaders,
-            signal: controller.signal,
-          })
-          const payload = await response.json().catch(() => null)
-
-          if (!response.ok) {
-            throw new Error(payload?.error?.message ?? 'Failed to load recently listened.')
-          }
-
-          const items = Array.isArray(payload?.items) ? payload.items : []
-          total = Number(payload?.total ?? 0)
-          allItems = allItems.concat(items)
-
-          if (items.length === 0 || allItems.length >= total) break
-          page += 1
-        }
-
-        const mapped = allItems.map((item) => ({
-          id: item.id,
-          artist: item.artistNameRaw ?? 'Unknown Artist',
-          album: item.albumTitleRaw ?? 'Unknown Album',
-          cover: item.coverArtUrl || '/album/am.jpg',
-          rating: item.rating ?? 0,
-          status: item.status ?? 'backloggd',
-          addedAt: item.addedAt ?? null,
-        }))
-
-        const logsCount = mapped.reduce(
-          (sum, item) => sum + (LOG_STATUSES.has(item.status) ? 1 : 0),
-          0,
-        )
-        const backlogCount = mapped.reduce(
-          (sum, item) => sum + (BACKLOG_STATUSES.has(item.status) ? 1 : 0),
-          0,
-        )
-        const activity = mapped.slice(0, 5).map((item) => {
+        const stats = payload?.stats ?? {}
+        const activityRows = Array.isArray(payload?.activity) ? payload.activity : []
+        const activity = activityRows.map((item) => {
           const isLog = LOG_STATUSES.has(item.status)
           return {
             id: `you-${item.id}`,
@@ -513,39 +395,34 @@ export default function Home() {
             ) : (
               <PlusCircle size={16} weight="bold" />
             ),
-            text: isLog ? `You logged ${item.album}` : `You added ${item.album} to backlog`,
-            meta: `${item.artist} - ${formatRelativeTime(item.addedAt)}`,
-            cover: item.cover,
+            text: isLog
+              ? `You logged ${item.albumTitle ?? 'an album'}`
+              : `You added ${item.albumTitle ?? 'an album'} to backlog`,
+            meta: `${item.artistName ?? 'Unknown Artist'} - ${formatRelativeTime(item.addedAt)}`,
+            cover: item.coverArtUrl || '/album/am.jpg',
           }
         })
 
         if (!cancelled) {
-          setRecentlyListened(collapseConsecutiveRecentlyListened(recentMapped))
           setBacklogStats({
-            listened: mapped.length,
-            backlog: backlogCount,
-            logs: logsCount,
+            listened: Number(stats?.listened ?? 0),
+            backlog: Number(stats?.backlog ?? 0),
+            logs: Number(stats?.logs ?? 0),
           })
-          setRatingDistribution(buildRatingDistribution(mapped))
+          setRatingDistribution(normalizeRatingDistributionPayload(payload?.ratingDistribution ?? []))
           setUserActivity(activity)
         }
       } catch (error) {
         if (error?.name === 'AbortError') return
         if (!cancelled) {
-          setRecentlyListened([])
           setBacklogStats({ listened: 0, backlog: 0, logs: 0 })
           setRatingDistribution(buildRatingDistribution([]))
           setUserActivity([])
-          setRecentError(error?.message ?? 'Unable to load recently listened.')
-        }
-      } finally {
-        if (!cancelled) {
-          setIsRecentLoading(false)
         }
       }
     }
 
-    loadRecentlyListened()
+    loadHomeSummary()
     return () => {
       cancelled = true
       controller.abort()

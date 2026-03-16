@@ -1,6 +1,9 @@
 import { toErrorResponse, ValidationError } from "../_lib/errors.js";
 import { getRequestId, sendJson } from "../_lib/http.js";
 import { logError } from "../_lib/logger.js";
+import { getOrSetMemoryCache } from "../_lib/memory-cache.js";
+import { setPublicCacheHeaders } from "../_lib/cache-control.js";
+import { measureRequest } from "../_lib/perf.js";
 import { buildExploreContainer } from "./container.js";
 
 function parseBoundedInt(value, { fallback, min, max, label }) {
@@ -45,11 +48,25 @@ export default async function handler(req, res) {
     });
 
     const { exploreService } = buildExploreContainer();
-    const data = await exploreService.getTrendingReviews(limit, {
-      interactionWindowDays: windowDays,
-      reviewWindowDays,
-    });
+    const cacheKey = `explore:trending:v1:l${limit}:w${windowDays}:rw${reviewWindowDays}`;
+    const data = await getOrSetMemoryCache(cacheKey, 45_000, () =>
+      measureRequest(
+        "explore.trending-reviews",
+        requestId,
+        () =>
+          exploreService.getTrendingReviews(limit, {
+            interactionWindowDays: windowDays,
+            reviewWindowDays,
+          }),
+        { warnMs: 450 }
+      )
+    );
 
+    setPublicCacheHeaders(res, {
+      sMaxAgeSeconds: 45,
+      staleWhileRevalidateSeconds: 120,
+      maxAgeSeconds: 0,
+    });
     sendJson(res, 200, data, requestId);
   } catch (error) {
     const mapped = toErrorResponse(error, requestId);

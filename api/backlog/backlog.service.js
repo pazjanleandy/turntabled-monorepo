@@ -119,6 +119,38 @@ function mapItem(row) {
   };
 }
 
+const HOME_RATING_BUCKETS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+function normalizeHomeRatingDistribution(rows = []) {
+  const countsByKey = new Map(
+    HOME_RATING_BUCKETS.map((bucket) => [bucket.toFixed(1), 0])
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key =
+      typeof row?.bucket === "string" ? row.bucket.trim() : Number(row?.bucket).toFixed(1);
+    if (!countsByKey.has(key)) continue;
+    const count = Number(row?.count);
+    countsByKey.set(key, Number.isFinite(count) ? Math.max(0, count) : 0);
+  }
+
+  return HOME_RATING_BUCKETS.map((bucket) => ({
+    bucket,
+    count: countsByKey.get(bucket.toFixed(1)) ?? 0,
+  }));
+}
+
+function mapHomeActivity(row) {
+  return {
+    id: row?.id ?? null,
+    status: normalizeStatusForRead(row?.status),
+    rating: typeof row?.rating === "number" ? row.rating : null,
+    addedAt: row?.added_at ?? row?.updated_at ?? null,
+    artistName: row?.album?.artist?.name ?? row?.artist_name_raw ?? "Unknown Artist",
+    albumTitle: row?.album?.title ?? row?.album_title_raw ?? "Unknown Album",
+    coverArtUrl: row?.album?.cover_art_url ?? null,
+  };
+}
+
 export class BacklogService {
   constructor({ backlogRepository }) {
     this.backlogRepository = backlogRepository;
@@ -131,6 +163,25 @@ export class BacklogService {
       limit,
       total,
       items: rows.map((row) => mapItem(row)),
+    };
+  }
+
+  async listHomeSummaryForUser(userId, { activityLimit = 5 } = {}) {
+    const safeLimit = Number.isInteger(activityLimit) ? Math.min(Math.max(activityLimit, 1), 20) : 5;
+    const [summary, recentRows] = await Promise.all([
+      this.backlogRepository.getHomeSummaryByUser(userId),
+      this.backlogRepository.listRecentActivityByUser(userId, safeLimit),
+    ]);
+
+    return {
+      stats: {
+        listened: Number(summary?.listened_count ?? 0),
+        backlog: Number(summary?.backlog_count ?? 0),
+        logs: Number(summary?.logs_count ?? 0),
+        ratedCount: Number(summary?.rated_count ?? 0),
+      },
+      ratingDistribution: normalizeHomeRatingDistribution(summary?.rating_distribution ?? []),
+      activity: (Array.isArray(recentRows) ? recentRows : []).map((row) => mapHomeActivity(row)),
     };
   }
 
