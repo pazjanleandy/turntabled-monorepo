@@ -1,5 +1,6 @@
 /* global process */
 
+import "dotenv/config";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -89,6 +90,12 @@ async function getHandler(absoluteFilePath) {
   return handler;
 }
 
+function toQueryObject(req) {
+  const rawQuery = req.query;
+  if (!rawQuery || typeof rawQuery !== "object") return {};
+  return { ...rawQuery };
+}
+
 function buildCorsOptions() {
   const allowedOrigins = [
     ...toArray(process.env.CORS_ORIGINS),
@@ -142,8 +149,14 @@ async function createApp() {
           return;
         }
 
-        req.query = { ...(req.query ?? {}), ...(req.params ?? {}) };
-        await handler(req, res);
+        const handlerReq = Object.create(req);
+        Object.defineProperty(handlerReq, "query", {
+          value: { ...toQueryObject(req), ...(req.params ?? {}) },
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+        await handler(handlerReq, res);
 
         if (!res.headersSent) {
           res.status(204).end();
@@ -161,8 +174,14 @@ async function createApp() {
   app.use((error, _req, res, NEXT) => {
     void NEXT;
     const statusCode = /CORS/i.test(String(error?.message ?? "")) ? 403 : 500;
+    const isProduction = process.env.NODE_ENV === "production";
     const message = statusCode === 403 ? error.message : "Unexpected server error.";
-    res.status(statusCode).json({ error: message });
+    const payload =
+      !isProduction && statusCode === 500
+        ? { error: message, details: String(error?.message ?? ""), stack: error?.stack ?? null }
+        : { error: message };
+    console.error("[render-api-server] route error", error);
+    res.status(statusCode).json(payload);
   });
 
   return { app, routes };
