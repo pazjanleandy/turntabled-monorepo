@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Star, TrendUp } from 'phosphor-react'
 import CoverImage from '../CoverImage.jsx'
+import { SkeletonBlock } from '../loading/ContextSkeleton.jsx'
 
 function formatAverageRating(value) {
   if (typeof value !== 'number' || Number.isNaN(value)) return ''
@@ -80,7 +81,20 @@ export default function HomeMobilePopularSection({ albums = [], isLoading = fals
       </div>
 
       {isLoading ? (
-        <div className="py-2 text-sm text-muted">Loading popular albums...</div>
+        <div className="-mx-4 overflow-hidden sm:-mx-6" aria-label="Loading popular albums" aria-busy="true">
+          <div className="grid auto-cols-[78%] grid-flow-col gap-4 overflow-hidden px-4 pb-1 pt-1 sm:auto-cols-[48%] sm:px-6">
+            {[0, 1, 2].map((item) => (
+              <article key={`mobile-popular-skeleton-${item}`} className="min-w-0">
+                <SkeletonBlock className="aspect-square w-full" rounded="rounded-none" />
+                <div className="mt-3 space-y-2 px-0.5">
+                  <SkeletonBlock className="h-3.5 w-[82%]" rounded="rounded-full" />
+                  <SkeletonBlock className="h-3 w-[56%]" rounded="rounded-full" />
+                  <SkeletonBlock className="h-2.5 w-[68%]" rounded="rounded-full" />
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50/85 px-3 py-2 text-sm text-red-700">
           {error}

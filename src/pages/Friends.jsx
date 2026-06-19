@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  CaretDown,
   Check,
   Clock,
   Flame,
@@ -278,6 +279,7 @@ export default function Friends() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState('')
   const [sortBy, setSortBy] = useState('recent')
+  const [requestsOpen, setRequestsOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [navUser, setNavUser] = useState(() => ({
     username: cachedProfile?.username || '',
@@ -437,6 +439,18 @@ export default function Friends() {
     ? !searchLoading && !searchError && searchResults.length === 0
     : !hasNoFriends && sortedFriends.length === 0
   const hasActiveFilters = Object.values(filters).some(Boolean)
+  const hasIncomingRequests = incomingRequests.length > 0
+  const requestSummary = hasIncomingRequests
+    ? incomingRequests.length === 1
+      ? `@${(incomingRequests[0]?.sender?.username || 'unknown').replace(/^@/, '')} sent a request`
+      : `${incomingRequests.length} pending friend requests`
+    : ''
+
+  useEffect(() => {
+    if (!hasIncomingRequests) {
+      setRequestsOpen(false)
+    }
+  }, [hasIncomingRequests])
 
   useEffect(() => {
     if (!isSidebarOpen) return
@@ -486,7 +500,9 @@ export default function Friends() {
           <div className="hidden md:block">
             <Navbar className="w-full" />
           </div>
-          <BackButton className="self-start !rounded-lg !px-2.5 !py-1 !text-[10px] md:!rounded-full md:!px-3 md:!py-1.5 md:!text-xs" />
+          <div className="hidden md:block">
+            <BackButton className="self-start !rounded-full !px-3 !py-1.5 !text-xs" />
+          </div>
 
           <header className="space-y-2.5 md:space-y-4">
             <div className="flex flex-col gap-2.5 md:flex-row md:items-end md:justify-between md:gap-4">
@@ -507,12 +523,14 @@ export default function Friends() {
                   <Users className="h-3.5 w-3.5" />
                   {friends.length} friends
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-semibold text-muted shadow-none md:border-[color:var(--border)] md:bg-[var(--surface-1)] md:px-3 md:py-1.5 md:text-xs md:text-[color:var(--text-soft)] md:shadow-sm">
-                  <Clock className="h-3.5 w-3.5" />
-                  {incomingRequests.length}{' '}
-                  <span className="md:hidden">pending</span>
-                  <span className="hidden md:inline">pending requests</span>
-                </span>
+                {hasIncomingRequests ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/25 bg-accent/12 px-2.5 py-1 text-[11px] font-semibold text-accent shadow-none md:border-orange-500/30 md:bg-accent/15 md:px-3 md:py-1.5 md:text-xs md:shadow-sm">
+                    <Clock className="h-3.5 w-3.5" />
+                    {incomingRequests.length}{' '}
+                    <span className="md:hidden">pending</span>
+                    <span className="hidden md:inline">pending requests</span>
+                  </span>
+                ) : null}
               </div>
             </div>
           </header>
@@ -595,32 +613,40 @@ export default function Friends() {
             </div>
           </section>
 
-          {!hasSearchQuery ? (
-            <section className="space-y-3 border-b border-black/10 pb-3 md:space-y-4 md:rounded-2xl md:border md:border-[color:var(--border)] md:bg-[var(--surface-1)] md:p-5 md:shadow-sm md:backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="mb-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted md:mb-1 md:text-sm md:font-normal md:tracking-widest">
-                    Friend requests
-                  </p>
-                  <p className="mb-0 text-[12px] text-muted md:text-sm">
-                    Incoming requests waiting for your response
-                  </p>
-                </div>
-                <span className="inline-flex items-center rounded-full border border-black/10 bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-semibold text-muted md:border-[color:var(--border)] md:bg-[var(--surface-2)] md:px-2.5 md:py-1 md:text-xs md:text-[color:var(--text-soft)]">
-                  {incomingRequests.length}
+          {!hasSearchQuery && hasIncomingRequests ? (
+            <section className="overflow-hidden rounded-xl border border-orange-500/20 bg-accent/8 shadow-none md:rounded-2xl md:bg-[var(--surface-1)] md:shadow-sm md:backdrop-blur">
+              <button
+                type="button"
+                onClick={() => setRequestsOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-3 rounded-none border-0 bg-transparent px-3 py-2.5 text-left text-text shadow-none transition duration-200 ease-out hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 md:px-4 md:py-3"
+                aria-expanded={requestsOpen}
+              >
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-orange-500/25 bg-accent/15 text-accent">
+                    <Clock className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-semibold md:text-sm">
+                      {requestSummary}
+                    </span>
+                    <span className="block truncate text-[11px] font-medium text-muted md:text-xs">
+                      Review when you are ready
+                    </span>
+                  </span>
                 </span>
-              </div>
+                <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent md:text-xs">
+                  Review
+                  <CaretDown
+                    className={[
+                      'h-3.5 w-3.5 transition-transform duration-200',
+                      requestsOpen ? 'rotate-180' : '',
+                    ].join(' ')}
+                  />
+                </span>
+              </button>
 
-              {friendsLoading ? (
-                <p className="mb-0 text-[13px] text-muted md:text-sm">
-                  Loading requests...
-                </p>
-              ) : incomingRequests.length === 0 ? (
-                <p className="mb-0 text-[13px] text-muted md:text-sm">
-                  No incoming friend requests.
-                </p>
-              ) : (
-                <div className="space-y-2">
+              {requestsOpen ? (
+                <div className="space-y-2 border-t border-orange-500/15 px-3 py-3 md:px-4">
                   {incomingRequests.map((request) => {
                     const senderUsername = request?.sender?.username || 'unknown'
                     const senderId = request?.sender?.id || request?.senderId
@@ -630,9 +656,9 @@ export default function Friends() {
                     return (
                       <article
                         key={request.id}
-                        className="group rounded-lg border border-black/10 bg-[var(--surface-1)] p-2.5 md:rounded-2xl md:border-[color:var(--border)] md:bg-[var(--surface-2)] md:p-4 md:shadow-sm md:backdrop-blur"
+                        className="group rounded-lg border border-black/10 bg-[var(--surface-1)] p-2.5 md:rounded-xl md:border-[color:var(--border)] md:bg-[var(--surface-2)] md:p-3"
                       >
-                        <div className="flex items-center justify-between gap-2.5 md:gap-3">
+                        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between md:gap-3">
                           <div
                             className="flex min-w-0 flex-1 items-center gap-2.5"
                             onClick={() => navigate(`/friends/${encodeURIComponent(senderId)}`)}
@@ -653,17 +679,17 @@ export default function Friends() {
                               <p className="mb-0 truncate text-[14px] font-semibold text-text md:text-base">
                                 @{senderUsername.replace(/^@/, '')}
                               </p>
-                              <p className="mb-0 mt-0.5 text-[11px] text-muted md:mt-1 md:text-sm">
+                              <p className="mb-0 mt-0.5 text-[11px] text-muted md:text-xs">
                                 Wants to be your friend
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 md:gap-2">
+                          <div className="grid grid-cols-2 gap-1.5 sm:flex sm:items-center md:gap-2">
                             <button
                               type="button"
                               disabled={pendingAccept || pendingReject}
                               onClick={() => acceptRequest(request.id).catch(() => {})}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-500/35 bg-emerald-100/70 px-2.5 text-[11px] font-semibold text-emerald-700 transition duration-200 ease-out hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:h-9 md:gap-1.5 md:rounded-xl md:px-3 md:text-xs"
+                              className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-emerald-500/35 bg-emerald-100/70 px-2.5 text-[11px] font-semibold text-emerald-700 transition duration-200 ease-out hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:h-9 md:gap-1.5 md:px-3 md:text-xs"
                             >
                               <Check className="h-3.5 w-3.5" />
                               {pendingAccept ? 'Accepting...' : 'Accept'}
@@ -672,7 +698,7 @@ export default function Friends() {
                               type="button"
                               disabled={pendingAccept || pendingReject}
                               onClick={() => rejectRequest(request.id).catch(() => {})}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-500/35 bg-red-100/70 px-2.5 text-[11px] font-semibold text-red-700 transition duration-200 ease-out hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 md:h-9 md:gap-1.5 md:rounded-xl md:px-3 md:text-xs"
+                              className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-red-500/35 bg-red-100/70 px-2.5 text-[11px] font-semibold text-red-700 transition duration-200 ease-out hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 md:h-9 md:gap-1.5 md:px-3 md:text-xs"
                             >
                               <X className="h-3.5 w-3.5" />
                               {pendingReject ? 'Rejecting...' : 'Reject'}
@@ -683,7 +709,7 @@ export default function Friends() {
                     )
                   })}
                 </div>
-              )}
+              ) : null}
             </section>
           ) : null}
 

@@ -6,6 +6,7 @@ import BackButton from '../components/BackButton.jsx'
 import AlbumGridItem from '../components/logged/AlbumGridItem.jsx'
 import LoggedToolbar from '../components/logged/LoggedToolbar.jsx'
 import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import { AlbumGridSkeleton } from '../components/loading/ContextSkeleton.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 import { readCachedProfile } from '../lib/profileClient.js'
@@ -699,8 +700,8 @@ export default function Backlog() {
               <p className="mb-0 text-sm text-muted">Sign in to view your logged albums.</p>
             </section>
           ) : isLoading ? (
-            <section className="card vinyl-texture">
-              <p className="mb-0 text-sm text-muted">Loading your logged albums...</p>
+            <section className="py-1">
+              <AlbumGridSkeleton count={10} />
             </section>
           ) : !loggedCollection.length ? (
             <section className="card vinyl-texture">

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
 import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import { ContextPageSkeleton } from '../components/loading/ContextSkeleton.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { readCachedProfile } from '../lib/profileClient.js'
 import { supabase } from '../supabase.js'
@@ -634,16 +635,7 @@ export default function ArtistPage() {
               <MobileBackRow onBack={() => navigate(-1)} />
             </div>
 
-            <section className="border-b border-black/10 pb-5 pt-0 md:hidden">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Artist</p>
-              <h1 className="mb-1 text-[1.9rem] leading-none text-text">Loading artist...</h1>
-              <p className="mb-0 text-sm text-muted">Fetching artist details and albums.</p>
-            </section>
-
-            <section className="hidden md:block card vinyl-texture">
-              <h1 className="mb-2 text-2xl">Loading artist...</h1>
-              <p className="mb-0 text-sm text-muted">Fetching artist details and albums.</p>
-            </section>
+            <ContextPageSkeleton variant="artist" />
           </div>
         </div>
       </div>

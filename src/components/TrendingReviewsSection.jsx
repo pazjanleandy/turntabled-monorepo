@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ChatCircle, Heart, TrendUp } from 'phosphor-react'
 import CoverImage from './CoverImage.jsx'
 import StarRating from './StarRating.jsx'
+import { ReviewSkeleton, RowListSkeleton, SkeletonBlock } from './loading/ContextSkeleton.jsx'
 
 function formatRelativeTime(value) {
   if (!value) return 'Recently'
@@ -355,37 +356,14 @@ function TrendingReviewRow({ review, rank }) {
 function LoadingState() {
   return (
     <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-      <div className="animate-pulse">
-        <div className="h-3 w-24 bg-black/8" />
-        <div className="mt-3 grid gap-4 sm:grid-cols-[124px_minmax(0,1fr)]">
-          <div className="h-[124px] w-[124px] bg-black/8" />
-          <div>
-            <div className="h-3 w-24 bg-black/8" />
-            <div className="mt-3 h-10 w-3/4 bg-black/8" />
-            <div className="mt-3 h-4 w-1/3 bg-black/8" />
-            <div className="mt-3 h-4 w-2/3 bg-black/8" />
-            <div className="mt-2 h-4 w-full bg-black/8" />
-            <div className="mt-2 h-4 w-[88%] bg-black/8" />
-          </div>
-        </div>
+      <div>
+        <SkeletonBlock className="h-3 w-24" rounded="rounded-full" />
+        <ReviewSkeleton className="mt-3" />
       </div>
 
       <div className="border-t border-black/6 pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
-        <div className="h-3 w-32 bg-black/8" />
-        <div className="mt-3 divide-y divide-black/7">
-          {[0, 1, 2].map((item) => (
-            <div key={item} className="grid gap-3 py-4 first:pt-0 sm:grid-cols-[24px_60px_minmax(0,1fr)]">
-              <div className="h-3 w-4 bg-black/8" />
-              <div className="h-[60px] w-[60px] bg-black/8" />
-              <div>
-                <div className="h-4 w-1/2 bg-black/8" />
-                <div className="mt-2 h-3 w-1/3 bg-black/8" />
-                <div className="mt-2 h-3 w-2/3 bg-black/8" />
-                <div className="mt-2 h-3 w-full bg-black/8" />
-              </div>
-            </div>
-          ))}
-        </div>
+        <SkeletonBlock className="h-3 w-32" rounded="rounded-full" />
+        <RowListSkeleton count={3} className="mt-3" />
       </div>
     </div>
   )

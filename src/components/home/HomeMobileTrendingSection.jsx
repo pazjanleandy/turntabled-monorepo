@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ChatCircle, Heart, TrendUp } from 'phosphor-react'
 import CoverImage from '../CoverImage.jsx'
+import { ReviewSkeleton, RowListSkeleton } from '../loading/ContextSkeleton.jsx'
 
 function formatRelativeTime(value) {
   if (!value) return 'Recently'
@@ -227,7 +228,10 @@ export default function HomeMobileTrendingSection({
       </div>
 
       {isLoading ? (
-        <div className="py-2 text-sm text-muted">Loading trending reviews...</div>
+        <div className="space-y-4 py-1" aria-label="Loading trending reviews" aria-busy="true">
+          <ReviewSkeleton compact />
+          <RowListSkeleton count={3} />
+        </div>
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50/85 px-3 py-2 text-sm text-red-700">
           {error}

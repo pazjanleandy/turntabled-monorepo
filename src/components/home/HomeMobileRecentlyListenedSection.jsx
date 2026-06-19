@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Headphones } from 'phosphor-react'
 import CoverImage from '../CoverImage.jsx'
+import { AlbumGridSkeleton } from '../loading/ContextSkeleton.jsx'
 
 function getInitials(value = '') {
   const parts = String(value ?? '')
@@ -62,7 +63,7 @@ export default function HomeMobileRecentlyListenedSection({
       </div>
 
       {isLoading ? (
-        <div className="py-2 text-sm text-muted">Loading friends listening activity...</div>
+        <AlbumGridSkeleton count={4} className="grid-cols-2 md:grid-cols-2" />
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50/85 px-3 py-2 text-sm text-red-700">
           {error}

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Headphones } from 'phosphor-react'
 import CoverImage from './CoverImage.jsx'
 import useHorizontalRail from '../hooks/useHorizontalRail.js'
+import { RowListSkeleton } from './loading/ContextSkeleton.jsx'
 
 const BACKLOG_STATUSES = new Set(['listening', 'unfinished', 'backloggd'])
 
@@ -186,7 +187,9 @@ export default function RecentlyListenedSection({
 
       <div className="overflow-hidden">
         {isLoading ? (
-          <p className="mb-0 text-sm text-muted">Loading friends listening activity...</p>
+          <div className="border-y border-black/10 py-3">
+            <RowListSkeleton count={4} />
+          </div>
         ) : error ? (
           <p className="mb-0 text-sm text-muted">{error}</p>
         ) : !isSignedIn ? (

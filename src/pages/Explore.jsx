@@ -6,6 +6,7 @@ import NavbarGuest from '../components/NavbarGuest.jsx'
 import BackButton from '../components/BackButton.jsx'
 import ExploreAlbumTile from '../components/explore/ExploreAlbumTile.jsx'
 import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import { AlbumGridSkeleton } from '../components/loading/ContextSkeleton.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import {
   PROFILE_EVENT_NAME,
@@ -827,8 +828,8 @@ export default function Explore() {
             </div>
 
             {isLoading ? (
-              <div className="rounded-2xl border border-black/5 bg-white/70 p-4 text-sm text-muted md:p-6">
-                Loading albums...
+              <div className="py-1">
+                <AlbumGridSkeleton count={12} />
               </div>
             ) : loadError ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 md:p-6">

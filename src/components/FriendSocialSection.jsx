@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { UsersThree } from 'phosphor-react'
 import CoverImage from './CoverImage.jsx'
+import { RowListSkeleton } from './loading/ContextSkeleton.jsx'
 
 function getInitials(value = '') {
   const parts = String(value ?? '')
@@ -143,8 +144,8 @@ export default function FriendSocialSection({
       </div>
 
       {isLoading ? (
-        <div className="rounded-[16px] border border-black/8 bg-white/62 px-4 py-4 text-sm text-muted">
-          Loading friend activity...
+        <div className="py-1">
+          <RowListSkeleton count={compact ? 3 : 5} />
         </div>
       ) : error ? (
         <div className="rounded-[16px] border border-red-200 bg-red-50/85 px-4 py-4 text-sm text-red-700">

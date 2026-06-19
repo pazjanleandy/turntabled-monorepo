@@ -4,6 +4,7 @@ import { FunnelSimple, MagnifyingGlass, Star } from 'phosphor-react'
 import Navbar from '../components/Navbar.jsx'
 import BackButton from '../components/BackButton.jsx'
 import CoverImage from '../components/CoverImage.jsx'
+import { RowListSkeleton } from '../components/loading/ContextSkeleton.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import { buildApiAuthHeaders } from '../lib/apiAuth.js'
 
@@ -274,8 +275,8 @@ export default function Activity() {
               Sign in to view your logged albums.
             </div>
           ) : isLoading ? (
-            <div className="rounded-soft border border-black/5 bg-white/75 p-6 text-sm text-muted shadow-subtle">
-              Loading your logged albums...
+            <div className="py-1">
+              <RowListSkeleton count={5} />
             </div>
           ) : error ? (
             <div className="rounded-soft border border-red-200 bg-red-50/70 p-6 text-sm text-red-700 shadow-subtle">

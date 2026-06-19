@@ -9,6 +9,7 @@ import StarRating from "../components/StarRating.jsx";
 import LogDatesModal from "../components/album/LogDatesModal.jsx";
 import ReviewModal from "../components/album/ReviewModal.jsx";
 import HomeMobileSidebar from "../components/home/HomeMobileSidebar.jsx";
+import { ContextPageSkeleton } from "../components/loading/ContextSkeleton.jsx";
 import useAuthStatus from "../hooks/useAuthStatus.js";
 import { buildApiAuthHeaders } from "../lib/apiAuth.js";
 import {
@@ -1266,9 +1267,7 @@ export default function AlbumPage() {
               <BackButton className="self-start" />
             </div>
 
-            <section className="card vinyl-texture">
-              <p className="mb-0 text-sm text-muted">Loading album details...</p>
-            </section>
+            <ContextPageSkeleton variant="album" />
           </div>
         </div>
       </div>

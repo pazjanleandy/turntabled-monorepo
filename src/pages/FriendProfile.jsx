@@ -12,6 +12,7 @@ import ReviewsSection from '../components/profile/ReviewsSection.jsx'
 import StatsSection from '../components/profile/StatsSection.jsx'
 import HomeMobileHeader from '../components/home/HomeMobileHeader.jsx'
 import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import { ContextPageSkeleton } from '../components/loading/ContextSkeleton.jsx'
 import {
   Calendar,
   Check,
@@ -588,9 +589,7 @@ export default function FriendProfile() {
     return renderScaffold(
       <main className="overflow-visible rounded-none border-0 bg-transparent shadow-none md:overflow-hidden md:rounded-3xl md:border md:border-[var(--border)] md:bg-[var(--card)] md:backdrop-blur-md md:shadow-sm">
         <div className="divide-y divide-black/8 md:divide-[var(--border)]">
-          <section className="px-0 py-4 md:px-6 md:py-6 lg:px-8">
-            <p className="mb-0 text-sm text-slate-600">Loading profile...</p>
-          </section>
+          <ContextPageSkeleton variant="profile" className="border-0 bg-transparent shadow-none md:rounded-none" />
         </div>
       </main>,
     )

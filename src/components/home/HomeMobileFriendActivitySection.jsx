@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Heart } from 'phosphor-react'
 import CoverImage from '../CoverImage.jsx'
+import { RowListSkeleton } from '../loading/ContextSkeleton.jsx'
 
 function ActivityFeedItem({ item }) {
   return (
@@ -47,7 +48,9 @@ export default function HomeMobileFriendActivitySection({
       </div>
 
       {isLoading ? (
-        <div className="py-2 text-sm text-muted">Loading friend activity...</div>
+        <div className="overflow-hidden py-1">
+          <RowListSkeleton count={4} />
+        </div>
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50/85 px-3 py-2 text-sm text-red-700">
           {error}

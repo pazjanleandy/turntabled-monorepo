@@ -20,6 +20,7 @@ import Navbar from '../components/Navbar.jsx'
 import NavbarGuest from '../components/NavbarGuest.jsx'
 import CoverImage from '../components/CoverImage.jsx'
 import HomeMobileSidebar from '../components/home/HomeMobileSidebar.jsx'
+import { RowListSkeleton, SkeletonBlock } from '../components/loading/ContextSkeleton.jsx'
 import useAuthStatus from '../hooks/useAuthStatus.js'
 import {
   PROFILE_EVENT_NAME,
@@ -2333,9 +2334,30 @@ export default function Lists() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-black/10 bg-card px-4 py-4 md:px-5 md:py-5">
+          <section
+            className={
+              isLoadingLists
+                ? 'py-1'
+                : 'rounded-2xl border border-black/10 bg-card px-4 py-4 md:px-5 md:py-5'
+            }
+          >
             {listsError ? <p className="mb-0 text-sm text-red-700">{listsError}</p> : null}
-            {isLoadingLists ? <p className="mb-0 text-sm text-muted">Loading community lists...</p> : null}
+            {isLoadingLists ? (
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]" aria-label="Loading community lists" aria-busy="true">
+                <div className="space-y-3">
+                  <SkeletonBlock className="h-3 w-28" rounded="rounded-full" />
+                  <SkeletonBlock className="h-8 w-[74%]" rounded="rounded-md" />
+                  <SkeletonBlock className="h-3 w-[92%]" rounded="rounded-full" />
+                  <SkeletonBlock className="h-3 w-[64%]" rounded="rounded-full" />
+                  <div className="grid grid-cols-4 gap-2 pt-2">
+                    {[0, 1, 2, 3].map((item) => (
+                      <SkeletonBlock key={`featured-list-cover-skeleton-${item}`} className="aspect-square" rounded="rounded-md" />
+                    ))}
+                  </div>
+                </div>
+                <RowListSkeleton count={3} />
+              </div>
+            ) : null}
             {!isLoadingLists && !listsError && mainFeatured ? (
               <>
                 <MobileFeaturedStack
@@ -2373,9 +2395,17 @@ export default function Lists() {
                 {listsPayload.total} shown
               </span>
             </div>
-            <div className="overflow-hidden border-t border-black/8 md:rounded-2xl md:bg-card/74 md:px-4 lg:px-5">
+            <div
+              className={
+                isLoadingLists
+                  ? 'overflow-hidden'
+                  : 'overflow-hidden border-t border-black/8 md:rounded-2xl md:bg-card/74 md:px-4 lg:px-5'
+              }
+            >
               {isLoadingLists ? (
-                <p className="mb-0 py-6 text-sm text-muted">Loading lists...</p>
+                <div className="py-4">
+                  <RowListSkeleton count={5} />
+                </div>
               ) : null}
 
               {!isLoadingLists && listsPayload.items.length === 0 ? (

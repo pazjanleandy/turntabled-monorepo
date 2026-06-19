@@ -2,6 +2,7 @@ import useHorizontalRail from '../hooks/useHorizontalRail.js'
 import { Link } from 'react-router-dom'
 import { Users, Star, TrendUp, MagnifyingGlass } from 'phosphor-react'
 import CoverImage from './CoverImage.jsx'
+import { AlbumGridSkeleton, RowListSkeleton, SkeletonBlock } from './loading/ContextSkeleton.jsx'
 
 function AlbumTile({ item }) {
   const albumId = item?.album?.id
@@ -413,8 +414,21 @@ export default function PopularAlbumsSection({ albums, search, onSearchChange, i
       </div>
 
       {isLoading ? (
-        <div className="rounded-2xl border border-black/5 bg-white/70 p-6 text-sm text-muted">
-          Loading popular albums...
+        <div className="py-1">
+          <div className="hidden gap-6 lg:grid lg:grid-cols-[minmax(0,1.28fr)_minmax(0,0.88fr)]">
+            <div className="grid grid-cols-[148px_minmax(0,1fr)] gap-4">
+              <SkeletonBlock className="aspect-square w-full" rounded="rounded-none" />
+              <div className="space-y-3">
+                <SkeletonBlock className="h-3 w-24" rounded="rounded-full" />
+                <SkeletonBlock className="h-7 w-[78%]" rounded="rounded-md" />
+                <SkeletonBlock className="h-3 w-[46%]" rounded="rounded-full" />
+                <SkeletonBlock className="h-3 w-[92%]" rounded="rounded-full" />
+                <SkeletonBlock className="h-3 w-[70%]" rounded="rounded-full" />
+              </div>
+            </div>
+            <RowListSkeleton count={4} />
+          </div>
+          <AlbumGridSkeleton count={6} className="lg:hidden" />
         </div>
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">{error}</div>
