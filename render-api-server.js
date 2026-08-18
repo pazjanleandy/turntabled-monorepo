@@ -33,6 +33,28 @@ function normalizeOrigin(origin) {
   return String(origin || "").trim().replace(/\/+$/, "");
 }
 
+function firstEnvValue(...keys) {
+  for (const key of keys) {
+    const value = String(process.env[key] ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function serializePublicEnv() {
+  const publicEnv = {
+    VITE_API_BASE_URL: firstEnvValue("VITE_API_BASE_URL"),
+    VITE_SUPABASE_URL: firstEnvValue("VITE_SUPABASE_URL", "SUPABASE_URL"),
+    VITE_SUPABASE_ANON_KEY: firstEnvValue(
+      "VITE_SUPABASE_ANON_KEY",
+      "SUPABASE_PUBLISHABLE_KEY",
+    ),
+    VITE_LASTFM_API_KEY: firstEnvValue("VITE_LASTFM_API_KEY", "LASTFM_API_KEY"),
+  };
+
+  return JSON.stringify(publicEnv).replace(/</g, "\\u003c");
+}
+
 function normalizeRouteSegment(segment) {
   if (segment.startsWith("[") && segment.endsWith("]")) {
     return `:${segment.slice(1, -1)}`;
@@ -151,6 +173,13 @@ async function createApp() {
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({ ok: true });
+  });
+
+  app.get("/env.js", (_req, res) => {
+    res
+      .type("application/javascript")
+      .set("Cache-Control", "no-store")
+      .send(`window.__TURNTABLED_ENV__ = ${serializePublicEnv()};\n`);
   });
 
   for (const { routePath, filePath } of routes) {
