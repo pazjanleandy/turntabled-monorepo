@@ -11,7 +11,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start:api": "node render-api-server.js"
+    "start:api": "node render-start.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
