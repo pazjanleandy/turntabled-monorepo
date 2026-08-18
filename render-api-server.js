@@ -15,6 +15,10 @@ const frontendIndexPath = path.join(frontendDistDir, "index.html");
 const handlerCache = new Map();
 
 const DEFAULT_PORT = 3001;
+const DEFAULT_CORS_ORIGINS = [
+  "https://turntabled-backend.onrender.com",
+  "https://turntabled-frontend.onrender.com",
+];
 const HANDLER_EXPORT_PATTERN =
   /export\s+default\s+(?:async\s+)?function\s+handler\b/;
 
@@ -100,9 +104,12 @@ function toQueryObject(req) {
 
 function buildCorsOptions() {
   const allowedOrigins = [
+    ...DEFAULT_CORS_ORIGINS,
     ...toArray(process.env.CORS_ORIGINS),
     ...toArray(process.env.APP_BASE_URL),
-  ].map(normalizeOrigin);
+  ]
+    .map(normalizeOrigin)
+    .filter(Boolean);
 
   return {
     origin(origin, callback) {

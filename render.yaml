@@ -9,7 +9,7 @@ services:
       - key: NODE_VERSION
         value: 22
       - key: CORS_ORIGINS
-        value: https://turntabled-frontend.onrender.com
+        value: https://turntabled-backend.onrender.com,https://turntabled-frontend.onrender.com
       - key: APP_BASE_URL
         sync: false
       - key: LASTFM_API_KEY
