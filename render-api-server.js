@@ -10,6 +10,8 @@ import express from "express";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const apiRootDir = path.join(__dirname, "api");
+const frontendDistDir = path.join(__dirname, "dist");
+const frontendIndexPath = path.join(frontendDistDir, "index.html");
 const handlerCache = new Map();
 
 const DEFAULT_PORT = 3001;
@@ -122,6 +124,10 @@ function buildCorsOptions() {
 
 async function createApp() {
   const app = express();
+  const hasFrontendBundle = await fs
+    .access(frontendIndexPath)
+    .then(() => true)
+    .catch(() => false);
   const handlerFiles = await discoverHandlerFiles(apiRootDir);
   const routes = handlerFiles
     .map((filePath) => ({ filePath, routePath: getRoutePathFromFile(filePath) }))
@@ -171,6 +177,29 @@ async function createApp() {
     res.status(404).json({ error: "Not found." });
   });
 
+  if (hasFrontendBundle) {
+    app.use(express.static(frontendDistDir, { index: false }));
+  }
+
+  app.use((req, res, next) => {
+    if (!hasFrontendBundle) {
+      next();
+      return;
+    }
+
+    if (!["GET", "HEAD"].includes(req.method) || req.path.startsWith("/api")) {
+      next();
+      return;
+    }
+
+    if (!req.accepts("html")) {
+      next();
+      return;
+    }
+
+    res.sendFile(frontendIndexPath);
+  });
+
   app.use((error, _req, res, NEXT) => {
     void NEXT;
     const statusCode = /CORS/i.test(String(error?.message ?? "")) ? 403 : 500;
@@ -182,6 +211,10 @@ async function createApp() {
         : { error: message };
     console.error("[render-api-server] route error", error);
     res.status(statusCode).json(payload);
+  });
+
+  app.use((_req, res) => {
+    res.status(404).type("text/plain").send("Not found.");
   });
 
   return { app, routes };

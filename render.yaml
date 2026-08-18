@@ -3,7 +3,7 @@ services:
     name: turntabled-api
     runtime: node
     plan: free
-    buildCommand: npm ci
+    buildCommand: npm ci && npm run build
     startCommand: npm run start:api
     envVars:
       - key: NODE_VERSION
