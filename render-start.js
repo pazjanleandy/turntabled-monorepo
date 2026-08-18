@@ -35,8 +35,7 @@ function run(command, args) {
 }
 
 if (!(await pathExists(frontendIndexPath))) {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  await run(npmCommand, ["run", "build"]);
+  await run("node", ["render-build.js"]);
 }
 
 await import("./render-api-server.js");
