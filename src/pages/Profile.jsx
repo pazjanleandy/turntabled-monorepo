@@ -853,6 +853,12 @@ export default function Profile() {
     navigate('/')
   }
 
+  const handleAccountDeleted = async () => {
+    await signOut()
+    setIsEditOpen(false)
+    navigate('/')
+  }
+
   return (
     <div className="min-h-screen">
       <div className="md:hidden">
@@ -1007,6 +1013,7 @@ export default function Profile() {
         bannerSrc={profileView.coverUrl || '/hero/hero1.jpg'}
         lastfmUsername={lastfmUsername}
         onDisconnectLastFm={handleDisconnectLastFm}
+        onDeleted={handleAccountDeleted}
         onClose={closeEditModal}
         onSaved={handleProfileSaved}
       />

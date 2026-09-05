@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'phosphor-react'
 import { supabase } from '../../supabase'
+import { getMissingPasswordRequirements } from '../../../shared/password-policy.js'
 
 export default function SignUpModal({ isOpen, onClose, onSignIn }) {
   const panelRef = useRef(null)
@@ -14,6 +15,7 @@ export default function SignUpModal({ isOpen, onClose, onSignIn }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const missingPasswordRequirements = getMissingPasswordRequirements(password)
 
   const resetForm = () => {
     setEmail('')
@@ -70,6 +72,14 @@ export default function SignUpModal({ isOpen, onClose, onSignIn }) {
       return
     }
 
+    const missingPasswordRequirements = getMissingPasswordRequirements(password)
+    if (missingPasswordRequirements.length > 0) {
+      setErrorMessage(
+        `Password must include: ${missingPasswordRequirements.map(({ label }) => label.toLowerCase()).join(', ')}.`,
+      )
+      return
+    }
+
     if (!acceptAge || !acceptPrivacy || !isHuman) {
       setErrorMessage('Please accept all required checkboxes to continue.')
       return
@@ -77,13 +87,20 @@ export default function SignUpModal({ isOpen, onClose, onSignIn }) {
 
     setIsSubmitting(true)
 
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        data: { username: normalizedUsername },
-      },
+    const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+    const registerResponse = await fetch(`${apiBase}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        username: normalizedUsername,
+        password,
+        emailRedirectTo: window.location.origin,
+      }),
     })
+    const registerPayload = await registerResponse.json().catch(() => ({}))
+    const signUpData = registerPayload.data
+    const signUpError = registerResponse.ok ? null : new Error(registerPayload.error ?? 'Unable to create account.')
 
     if (signUpError) {
       setErrorMessage(signUpError.message)
@@ -96,6 +113,15 @@ export default function SignUpModal({ isOpen, onClose, onSignIn }) {
       setErrorMessage('Account created, but no user ID was returned.')
       setIsSubmitting(false)
       return
+    }
+
+    if (signUpData?.session) {
+      const { error: sessionError } = await supabase.auth.setSession(signUpData.session)
+      if (sessionError) {
+        setErrorMessage(sessionError.message)
+        setIsSubmitting(false)
+        return
+      }
     }
 
     const { error: upsertError } = await supabase
@@ -187,6 +213,12 @@ export default function SignUpModal({ isOpen, onClose, onSignIn }) {
                 autoComplete="email"
                 className="h-12 w-full rounded-xl border border-black/10 bg-white/80 px-3.5 text-sm text-text outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
               />
+              <ul className="space-y-1 text-xs font-normal text-muted" aria-label="Password requirements">
+                {getMissingPasswordRequirements(password).map(({ key, label }) => (
+                  <li key={key}>Missing: {label}</li>
+                ))}
+                {missingPasswordRequirements.length === 0 ? <li className="text-emerald-700">Password meets all requirements.</li> : null}
+              </ul>
             </label>
 
             <label className="space-y-2 font-semibold text-text">
