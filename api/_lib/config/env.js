@@ -70,6 +70,17 @@ export function getNotificationsEnv() {
   };
 }
 
+export function getAuthEnv() {
+  return {
+    SUPABASE_URL: requireEnv("SUPABASE_URL"),
+    SUPABASE_PUBLISHABLE_KEY: requireAnyEnv([
+      "SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_ANON_KEY",
+      "VITE_SUPABASE_ANON_KEY",
+    ]),
+  };
+}
+
 export function getLastFmEnv() {
   return {
     NODE_ENV: process.env.NODE_ENV ?? "development",

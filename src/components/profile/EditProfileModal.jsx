@@ -21,6 +21,7 @@ export default function EditProfileModal({
   bannerSrc = '/hero/hero1.jpg',
   lastfmUsername = '',
   onDisconnectLastFm = null,
+  onDeleted = null,
   onClose,
   onSaved,
 }) {
@@ -35,6 +36,8 @@ export default function EditProfileModal({
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
   const fileInputRef = useRef(null)
   const bannerFileInputRef = useRef(null)
   const avatarPreviewFile = avatarResizeSourceFile ?? selectedFile
@@ -96,6 +99,8 @@ export default function EditProfileModal({
     setIsBannerResizeOpen(false)
     setErrorMessage('')
     setSuccessMessage('')
+    setDeleteConfirmation('')
+    setIsDeletingAccount(false)
     resetFileInput()
     resetBannerInput()
   }, [isOpen, user?.name, user?.bio, resetFileInput, resetBannerInput])
@@ -289,6 +294,34 @@ export default function EditProfileModal({
     }
   }
 
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation !== 'Confirm' || isDeletingAccount) return
+
+    setErrorMessage('')
+    setIsDeletingAccount(true)
+    try {
+      const apiBase = import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE_URL ?? ''
+      const authHeaders = await buildApiAuthHeaders()
+      const response = await fetch(`${apiBase}/api/auth/delete-account`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({ confirmation: deleteConfirmation }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? 'Failed to delete your account.')
+      }
+
+      await onDeleted?.()
+    } catch (error) {
+      setErrorMessage(error?.message ?? 'Failed to delete your account.')
+      setIsDeletingAccount(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -399,6 +432,30 @@ export default function EditProfileModal({
               </div>
             </section>
 
+            <section className="rounded-xl border border-red-200 bg-red-50/70 p-4">
+              <p className="mb-1 text-sm font-semibold text-red-800">Delete account</p>
+              <p className="mb-3 text-xs leading-relaxed text-red-700">
+                This permanently deletes your account and associated data. Type Confirm to continue.
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                placeholder="Confirm"
+                autoComplete="off"
+                className="h-10 w-full rounded-lg border border-red-200 bg-white px-3 text-sm text-text outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200"
+                disabled={isDeletingAccount}
+              />
+              <button
+                type="button"
+                className="mt-3 h-10 rounded-lg border border-red-300 bg-red-600 px-3 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmation !== 'Confirm' || isDeletingAccount}
+              >
+                {isDeletingAccount ? 'Deleting account...' : 'Delete account permanently'}
+              </button>
+            </section>
+
             {errorMessage ? (
               <p className="mb-0 text-xs font-semibold text-red-600">{errorMessage}</p>
             ) : null}
@@ -411,7 +468,7 @@ export default function EditProfileModal({
             <button
               className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-text shadow-[0_10px_20px_-16px_rgba(15,15,15,0.35)] transition hover:-translate-y-0.5 hover:bg-white"
               onClick={onClose}
-              disabled={isSaving}
+              disabled={isSaving || isDeletingAccount}
             >
               Cancel
             </button>
@@ -419,7 +476,7 @@ export default function EditProfileModal({
               type="button"
               className="btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleSaveChanges}
-              disabled={isSaving}
+              disabled={isSaving || isDeletingAccount}
             >
               {isSaving ? 'Saving changes...' : 'Save changes'}
             </button>
